@@ -2,15 +2,20 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
+import 'app_data.dart';
 import 'libgdx_compat/asset_manager.dart';
 import 'libgdx_compat/game_framework.dart';
 import 'libgdx_compat/gdx.dart';
 import 'libgdx_compat/gdx_collections.dart';
-import 'menu_screen.dart';
+import 'loading_screen.dart';
+import 'network_config.dart';
 
 class GameApp extends Game {
+  static const int multiplayerLevelIndex = 0;
+
+  final NetworkConfig networkConfig;
+  final AppData appData;
   final AssetManager assetManager = AssetManager();
-  final Array<String> menuOptions = Array<String>();
   final Array<String> levelNames = Array<String>();
   final Array<Array<String>> referencedImageFilesByLevel =
       Array<Array<String>>();
@@ -28,13 +33,16 @@ class GameApp extends Game {
   ShapeRenderer? shapeRenderer;
   BitmapFont? font;
 
+  GameApp({required this.networkConfig})
+    : appData = AppData(initialConfig: networkConfig);
+
   Future<void> create() async {
     batch = SpriteBatch();
     shapeRenderer = ShapeRenderer();
     font = BitmapFont();
     font!.getData().markupEnabled = false;
     await _loadProjectData();
-    setScreen(MenuScreen(this));
+    setScreen(LoadingScreen(this, multiplayerLevelIndex));
   }
 
   SpriteBatch getBatch() => batch!;
@@ -45,14 +53,18 @@ class GameApp extends Game {
 
   AssetManager getAssetManager() => assetManager;
 
-  Array<String> getMenuOptions() => menuOptions;
-
   String getLevelName(int levelIndex) {
     if (levelIndex < 0 || levelIndex >= levelNames.size) {
       return 'Unknown';
     }
     return levelNames.get(levelIndex);
   }
+
+  String getPlayerName() => networkConfig.playerName;
+
+  String getSelectedServerLabel() => networkConfig.serverLabel;
+
+  AppData getAppData() => appData;
 
   void queueReferencedAssetsForLevel(int levelIndex) {
     if (levelIndex < 0 || levelIndex >= referencedImageFilesByLevel.size) {
@@ -70,6 +82,15 @@ class GameApp extends Game {
       }
     }
     assetManager.load('other/enrrere.png', Texture);
+  }
+
+  @override
+  void dispose() {
+    appData.dispose();
+    assetManager.dispose();
+    font?.dispose();
+    shapeRenderer?.dispose();
+    super.dispose();
   }
 
   void unloadReferencedAssetsForLevel(int levelIndex) {
@@ -90,7 +111,6 @@ class GameApp extends Game {
   }
 
   Future<void> _loadProjectData() async {
-    menuOptions.clear();
     levelNames.clear();
     referencedImageFilesByLevel.clear();
     animationMediaById.clear();
@@ -121,7 +141,6 @@ class GameApp extends Game {
 
         final String levelName = (level['name'] as String?) ?? 'Level $index';
         levelNames.add(levelName);
-        menuOptions.add('LEVEL $index');
         final Array<String> levelImageFiles = Array<String>();
         _collectImageFiles(level, levelImageFiles);
         _collectAnimationMediaForLevel(level, levelImageFiles);
@@ -137,8 +156,6 @@ class GameApp extends Game {
   void _addFallbackLevels() {
     levelNames.add('Level 0');
     levelNames.add('Level 1');
-    menuOptions.add('LEVEL 0');
-    menuOptions.add('LEVEL 1');
     referencedImageFilesByLevel.add(Array<String>());
     referencedImageFilesByLevel.add(Array<String>());
   }
@@ -209,6 +226,7 @@ class GameApp extends Game {
 
     final ObjectSet<String> spriteTokens = ObjectSet<String>();
     final ObjectSet<String> animationGroups = ObjectSet<String>();
+    bool hasPlayerLikeSprite = false;
 
     for (final dynamic rawSprite in sprites) {
       final Map<String, dynamic>? sprite = rawSprite as Map<String, dynamic>?;
@@ -227,8 +245,13 @@ class GameApp extends Game {
         animationGroups.add(groupId);
       }
 
-      _addTokens(spriteTokens, (sprite['type'] as String?) ?? '');
-      _addTokens(spriteTokens, (sprite['name'] as String?) ?? '');
+      final String spriteType = (sprite['type'] as String?) ?? '';
+      final String spriteName = (sprite['name'] as String?) ?? '';
+      _addTokens(spriteTokens, spriteType);
+      _addTokens(spriteTokens, spriteName);
+      if (_looksPlayerLike(spriteType) || _looksPlayerLike(spriteName)) {
+        hasPlayerLikeSprite = true;
+      }
     }
 
     for (final String groupId in animationGroups.iterable()) {
@@ -253,6 +276,25 @@ class GameApp extends Game {
         continue;
       }
       if (!_containsAnyToken(entry.normalizedName, spriteTokens)) {
+        continue;
+      }
+      if (!levelImageFiles.contains(entry.mediaFile, false)) {
+        levelImageFiles.add(entry.mediaFile);
+      }
+    }
+
+    if (!hasPlayerLikeSprite) {
+      return;
+    }
+
+    final ObjectSet<String> playerAnimationTokens = ObjectSet<String>();
+    _addTokens(playerAnimationTokens, 'character hero heroi player foxy');
+    for (final _AnimationMediaEntry entry
+        in _animationMediaEntries.iterable()) {
+      if (entry.normalizedName.isEmpty) {
+        continue;
+      }
+      if (!_containsAnyToken(entry.normalizedName, playerAnimationTokens)) {
         continue;
       }
       if (!levelImageFiles.contains(entry.mediaFile, false)) {
@@ -327,15 +369,15 @@ class GameApp extends Game {
     }
   }
 
-  String _normalize(String value) => value.trim().toLowerCase();
-
-  @override
-  void dispose() {
-    super.dispose();
-    assetManager.dispose();
-    font?.dispose();
-    shapeRenderer?.dispose();
+  bool _looksPlayerLike(String rawValue) {
+    final String normalized = _normalize(rawValue);
+    return normalized.contains('player') ||
+        normalized.contains('hero') ||
+        normalized.contains('heroi') ||
+        normalized.contains('foxy');
   }
+
+  String _normalize(String value) => value.trim().toLowerCase();
 }
 
 class _AnimationMediaEntry {

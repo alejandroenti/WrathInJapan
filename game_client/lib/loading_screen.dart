@@ -4,8 +4,8 @@ import 'dart:math' as math;
 import 'game_app.dart';
 import 'libgdx_compat/game_framework.dart';
 import 'libgdx_compat/math_types.dart';
-import 'play_screen.dart';
 import 'libgdx_compat/viewport.dart';
+import 'waiting_room_screen.dart';
 
 class LoadingScreen extends ScreenAdapter {
   static const double worldWidth = 1280;
@@ -69,7 +69,7 @@ class LoadingScreen extends ScreenAdapter {
         visualProgress >= 0.999 &&
         !_levelReady) {
       _levelReady = true;
-      game.setScreen(PlayScreen(game, levelIndex));
+      game.setScreen(WaitingRoomScreen(game, levelIndex));
       return;
     }
 

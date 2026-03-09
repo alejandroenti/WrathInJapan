@@ -1,141 +1,100 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'libgdx_compat/asset_manager.dart';
+import 'app_data.dart';
 import 'debug_overlay.dart';
 import 'game_app.dart';
+import 'libgdx_compat/asset_manager.dart';
 import 'libgdx_compat/game_framework.dart';
-import 'gameplay_controller.dart';
-import 'gameplay_controller_platformer.dart';
-import 'gameplay_controller_top_down.dart';
 import 'libgdx_compat/gdx.dart';
 import 'libgdx_compat/gdx_collections.dart';
+import 'libgdx_compat/math_types.dart';
+import 'libgdx_compat/viewport.dart';
 import 'level_data.dart';
 import 'level_loader.dart';
 import 'level_renderer.dart';
-import 'libgdx_compat/math_types.dart';
-import 'menu_screen.dart';
+import 'player_list_renderer.dart';
 import 'runtime_transform.dart';
-import 'libgdx_compat/viewport.dart';
+import 'waiting_room_screen.dart';
 
 class PlayScreen extends ScreenAdapter {
-  static const double defaultAnimationFps = 8;
-  static const double fixedStepSeconds = 1 / 120;
+  static const double leaderboardWidth = 320;
+  static const double leaderboardPadding = 14;
+  static const double leaderboardRowHeight = 24;
+  static const double leaderboardStartY = 92;
   static const double maxFrameSeconds = 0.25;
-  static const double hudMargin = 14;
-  static const String hudBackLabel = 'Tornar';
-  static const double hudButtonHeight = 48;
-  static const double hudIconSize = 26;
-  static const double hudIconTextGap = 8;
-  static const double hudBackLabelScale = 1.45;
-  static const double hudCounterScale = 1.45;
-  static const double hudLifeTextScale = 1.2;
-  static const double hudLifeBarWidth = 210;
-  static const double hudLifeBarHeight = 14;
-  static const double hudLifeBarTopGap = 8;
-  static const double hudRowGap = 10;
-  static const double endOverlayReturnDelaySeconds = 1;
-  static const double endOverlayTitleScale = 2.4;
-  static const double endOverlayPromptScale = 1.25;
-  static const double endOverlayPromptGap = 44;
-  static const double cameraDeadZoneFractionX = 0.22;
-  static const double cameraDeadZoneFractionY = 0.18;
-  static const double cameraFollowSmoothnessPerSecond = 10;
+  static const double remotePlayerOpacity = 0.5;
+  static const double localPlayerRingPadding = 6;
 
-  static final ui.Color hudTextColor = colorValueOf('FFFFFF');
-  static final ui.Color hudLifeBarBg = colorValueOf('5B0D0D');
-  static final ui.Color hudLifeBarFill = colorValueOf('3DE67D');
-  static final ui.Color hudLifeBarBorder = colorValueOf('E8FFE8');
-  static final ui.Color endOverlayDim = colorValueOf('000000A8');
+  static final ui.Color panelFill = colorValueOf('09140CCC');
+  static final ui.Color panelStroke = colorValueOf('35FF74');
+  static final ui.Color titleColor = colorValueOf('FFFFFF');
+  static final ui.Color textColor = colorValueOf('D8FFE3');
+  static final ui.Color dimTextColor = colorValueOf('76A784');
+  static final ui.Color localPlayerColor = colorValueOf('FFE07A');
+  static final ui.Color winnerOverlayColor = colorValueOf('000000B8');
 
   final GameApp game;
   final int levelIndex;
   final OrthographicCamera camera = OrthographicCamera();
-  late final Viewport viewport;
-  final OrthographicCamera hudCamera = OrthographicCamera();
-  final Viewport hudViewport = ScreenViewport(OrthographicCamera());
   final LevelRenderer levelRenderer = LevelRenderer();
-  final DebugOverlay debugOverlayRenderer = DebugOverlay();
-  final Array<SpriteRuntimeState> spriteRuntimeStates =
-      Array<SpriteRuntimeState>();
-  final Array<RuntimeTransform> layerRuntimeStates = Array<RuntimeTransform>();
-  final Array<RuntimeTransform> zoneRuntimeStates = Array<RuntimeTransform>();
-  final Array<RuntimeTransform> zonePreviousRuntimeStates =
-      Array<RuntimeTransform>();
-  final Array<_PathBindingRuntime> _pathBindingRuntimes =
-      Array<_PathBindingRuntime>();
-  final FloatArray spriteAnimationElapsed = FloatArray();
-  final IntArray spriteTotalFrames = IntArray();
-  List<String> spriteTotalFramesCacheKey = <String>[];
-  List<String?> spriteCurrentAnimationId = <String?>[];
+  final DebugOverlay debugOverlay = DebugOverlay();
+  final GlyphLayout layout = GlyphLayout();
 
   late final LevelData levelData;
+  late final Viewport viewport;
   late final List<bool> layerVisibilityStates;
-  late final GameplayController gameplayController;
-  final Rectangle backButtonBounds = Rectangle();
-  final GlyphLayout hudLayout = GlyphLayout();
-  Texture? backIconTexture;
+  late final Array<SpriteRuntimeState> spriteRuntimeStates;
+  late final Array<RuntimeTransform> layerRuntimeStates;
+  late final Array<RuntimeTransform> zoneRuntimeStates;
+  late final LevelSprite playerTemplate;
+  late final Map<String, LevelSprite> gemTemplateByType;
 
-  _DebugOverlayMode _debugOverlayMode = _DebugOverlayMode.none;
-  _EndOverlayState _endOverlayState = _EndOverlayState.none;
-  double endOverlayElapsedSeconds = 0;
-  double fixedStepAccumulator = 0;
-  double pathMotionTimeSeconds = 0;
+  double elapsedSeconds = 0;
+  String _lastSubmittedDirection = 'none';
+  bool _showDebugOverlay = false;
+  ui.Offset? _localPlayerHighlightCenter;
+  double? _localPlayerHighlightRadius;
 
   PlayScreen(this.game, this.levelIndex) {
     levelData = LevelLoader.loadLevel(levelIndex);
-    layerVisibilityStates = _buildInitialLayerVisibility(levelData);
     viewport = _createViewport(levelData, camera);
-    camera.setPosition(0, 0);
+    layerVisibilityStates = _buildInitialLayerVisibility(levelData);
+    spriteRuntimeStates = _createHiddenTemplateRuntimes(levelData);
+    layerRuntimeStates = _createLayerRuntimeStates(levelData);
+    zoneRuntimeStates = _createZoneRuntimeStates(levelData);
+    playerTemplate = _findPlayerTemplate(levelData);
+    gemTemplateByType = _buildGemTemplates(levelData);
+    _applyInitialCameraFromLevel();
     viewport.update(
       Gdx.graphics.getWidth().toDouble(),
       Gdx.graphics.getHeight().toDouble(),
       false,
     );
-    _applyInitialCameraFromLevel();
-    _initializeAnimationRuntimeState();
-    _initializeTransformRuntimeState();
-    _initializePathBindingRuntimes();
-    gameplayController = _createGameplayController();
-    hudViewport.update(
-      Gdx.graphics.getWidth().toDouble(),
-      Gdx.graphics.getHeight().toDouble(),
-      true,
-    );
-    _loadHudAssets();
-  }
-
-  @override
-  void show() {
-    Gdx.input.setInputProcessor(null);
   }
 
   @override
   void render(double delta) {
-    if (Gdx.input.isKeyJustPressed(Input.keys.escape)) {
-      _returnToMenu();
+    elapsedSeconds += math.max(0, math.min(delta, maxFrameSeconds));
+
+    final AppData appData = game.getAppData();
+    if (appData.phase == MatchPhase.waiting ||
+        appData.phase == MatchPhase.connecting) {
+      _submitDirection(appData, 'none');
+      game.setScreen(WaitingRoomScreen(game, levelIndex));
       return;
     }
 
-    _updateBackButtonBounds();
-    if (!_isEndOverlayActive() && _handleHudBackInput()) {
-      return;
+    if (Gdx.input.isKeyJustPressed(Input.keys.f3)) {
+      _showDebugOverlay = !_showDebugOverlay;
     }
 
-    if (_isEndOverlayActive()) {
-      _updateEndOverlay(delta);
-      if (game.getScreen() != this) {
-        return;
-      }
-    } else {
-      _handleDebugOverlayInput();
-      gameplayController.handleInput();
-      _stepSimulation(delta);
-      _updateEndOverlayStateIfNeeded();
-    }
+    _submitDirection(appData, _readCurrentDirection());
+    _applyServerLayerTransforms(appData.layerTransforms);
+    _applyServerZoneTransforms(appData.zoneTransforms);
+    _updateCameraForGameplay(appData.localPlayer);
 
     viewport.apply();
-    _updateCameraForGameplay();
     ScreenUtils.clear(levelData.backgroundColor);
 
     final SpriteBatch batch = game.getBatch();
@@ -150,675 +109,326 @@ class PlayScreen extends ScreenAdapter {
       layerRuntimeStates,
       viewport,
     );
+    _renderGems(batch, appData.gems);
+    _renderPlayers(batch, appData.sortedPlayers, appData.playerId);
     batch.end();
+    if (_showDebugOverlay) {
+      debugOverlay.render(
+        levelData,
+        camera,
+        true,
+        true,
+        zoneRuntimeStates,
+        viewport,
+      );
+    }
+    _renderLocalPlayerHighlight();
 
-    debugOverlayRenderer.render(
-      levelData,
-      camera,
-      _debugOverlayMode == _DebugOverlayMode.zones ||
-          _debugOverlayMode == _DebugOverlayMode.both,
-      _debugOverlayMode == _DebugOverlayMode.paths ||
-          _debugOverlayMode == _DebugOverlayMode.both,
-      zoneRuntimeStates,
-      viewport,
-    );
-
-    _renderHud();
-    _renderEndOverlayIfActive();
+    _renderLeaderboard(appData);
+    if (appData.phase == MatchPhase.finished) {
+      _renderWinnerOverlay(appData);
+    }
   }
 
   @override
   void resize(int width, int height) {
     viewport.update(width.toDouble(), height.toDouble(), false);
-    hudViewport.update(width.toDouble(), height.toDouble(), true);
-    _updateBackButtonBounds();
-    _updateCameraForGameplay();
+    _updateCameraForGameplay(game.getAppData().localPlayer);
   }
 
   @override
   void dispose() {
-    debugOverlayRenderer.dispose();
+    _submitDirection(game.getAppData(), 'none');
+    debugOverlay.dispose();
   }
 
-  void _stepSimulation(double deltaSeconds) {
-    final double clampedDelta = math.max(
-      0,
-      math.min(maxFrameSeconds, deltaSeconds),
-    );
-    fixedStepAccumulator += clampedDelta;
-
-    while (fixedStepAccumulator >= fixedStepSeconds) {
-      _snapshotPreviousZoneTransforms();
-      _advancePathBindings(fixedStepSeconds);
-      gameplayController.fixedUpdate(fixedStepSeconds);
-      _updateAnimations(fixedStepSeconds);
-      fixedStepAccumulator -= fixedStepSeconds;
-    }
-  }
-
-  void _initializeAnimationRuntimeState() {
-    spriteRuntimeStates.clear();
-    spriteAnimationElapsed.clear();
-    spriteTotalFrames.clear();
-    spriteAnimationElapsed.setSize(levelData.sprites.size);
-
-    for (int i = 0; i < levelData.sprites.size; i++) {
-      final LevelSprite sprite = levelData.sprites.get(i);
-      spriteRuntimeStates.add(
-        SpriteRuntimeState(
-          sprite.frameIndex,
-          sprite.anchorX,
-          sprite.anchorY,
-          sprite.x,
-          sprite.y,
-          true,
-          sprite.flipX,
-          sprite.flipY,
-          math.max(1, sprite.width.round()),
-          math.max(1, sprite.height.round()),
-          sprite.texturePath,
-          sprite.animationId,
-        ),
-      );
-      spriteTotalFrames.add(0);
-      spriteAnimationElapsed.set(i, 0);
-    }
-
-    spriteTotalFramesCacheKey = List<String>.filled(levelData.sprites.size, '');
-    spriteCurrentAnimationId = List<String?>.filled(
-      levelData.sprites.size,
-      null,
-    );
-  }
-
-  void _initializeTransformRuntimeState() {
-    layerRuntimeStates.clear();
-    zoneRuntimeStates.clear();
-    zonePreviousRuntimeStates.clear();
-
-    for (int i = 0; i < levelData.layers.size; i++) {
-      final LevelLayer layer = levelData.layers.get(i);
-      layerRuntimeStates.add(RuntimeTransform(layer.x, layer.y));
-    }
-
-    for (int i = 0; i < levelData.zones.size; i++) {
-      final LevelZone zone = levelData.zones.get(i);
-      final RuntimeTransform current = RuntimeTransform(zone.x, zone.y);
-      zoneRuntimeStates.add(current);
-      zonePreviousRuntimeStates.add(RuntimeTransform(zone.x, zone.y));
-    }
-
-    pathMotionTimeSeconds = 0;
-  }
-
-  void _initializePathBindingRuntimes() {
-    _pathBindingRuntimes.clear();
-    if (levelData.pathBindings.size <= 0 || levelData.paths.size <= 0) {
-      return;
-    }
-
-    final ObjectMap<String, _PathRuntime> pathById =
-        ObjectMap<String, _PathRuntime>();
-    for (int i = 0; i < levelData.paths.size; i++) {
-      final LevelPath path = levelData.paths.get(i);
-      if (path.id.isEmpty || path.points.size < 2) {
-        continue;
-      }
-      final _PathRuntime? runtime = _PathRuntime.from(path);
-      if (runtime != null) {
-        pathById.put(path.id, runtime);
-      }
-    }
-
-    for (int i = 0; i < levelData.pathBindings.size; i++) {
-      final LevelPathBinding binding = levelData.pathBindings.get(i);
-      if (!binding.enabled) {
-        continue;
-      }
-      final _PathRuntime? path = pathById.get(binding.pathId);
-      if (path == null) {
-        continue;
-      }
-
-      double initialX;
-      double initialY;
-      if (binding.targetType == 'layer') {
-        if (binding.targetIndex < 0 ||
-            binding.targetIndex >= layerRuntimeStates.size) {
-          continue;
-        }
-        final RuntimeTransform target = layerRuntimeStates.get(
-          binding.targetIndex,
-        );
-        initialX = target.x;
-        initialY = target.y;
-        _pathBindingRuntimes.add(
-          _PathBindingRuntime(path, binding, initialX, initialY),
-        );
-      } else if (binding.targetType == 'zone') {
-        if (binding.targetIndex < 0 ||
-            binding.targetIndex >= zoneRuntimeStates.size) {
-          continue;
-        }
-        final RuntimeTransform target = zoneRuntimeStates.get(
-          binding.targetIndex,
-        );
-        initialX = target.x;
-        initialY = target.y;
-        _pathBindingRuntimes.add(
-          _PathBindingRuntime(path, binding, initialX, initialY),
-        );
-      } else if (binding.targetType == 'sprite') {
-        if (binding.targetIndex < 0 ||
-            binding.targetIndex >= spriteRuntimeStates.size) {
-          continue;
-        }
-        final SpriteRuntimeState target = spriteRuntimeStates.get(
-          binding.targetIndex,
-        );
-        initialX = target.worldX;
-        initialY = target.worldY;
-        _pathBindingRuntimes.add(
-          _PathBindingRuntime(path, binding, initialX, initialY),
-        );
-      }
-    }
-  }
-
-  void _snapshotPreviousZoneTransforms() {
-    for (
-      int i = 0;
-      i < zoneRuntimeStates.size && i < zonePreviousRuntimeStates.size;
-      i++
-    ) {
-      final RuntimeTransform current = zoneRuntimeStates.get(i);
-      final RuntimeTransform previous = zonePreviousRuntimeStates.get(i);
-      previous.x = current.x;
-      previous.y = current.y;
-    }
-  }
-
-  void _advancePathBindings(double delta) {
-    if (_pathBindingRuntimes.size <= 0) {
-      return;
-    }
-
-    pathMotionTimeSeconds += delta;
-    for (final _PathBindingRuntime runtime in _pathBindingRuntimes.iterable()) {
-      if (!runtime.binding.enabled) {
-        continue;
-      }
-      final double progress = _pathProgressAtTime(
-        runtime.binding.behavior,
-        runtime.binding.durationSeconds,
-        pathMotionTimeSeconds,
-      );
-      final _PathSample sample = runtime.path.sampleAtProgress(progress);
-
-      final double targetX = runtime.binding.relativeToInitialPosition
-          ? runtime.initialX + (sample.x - runtime.path.firstPointX)
-          : sample.x;
-      final double targetY = runtime.binding.relativeToInitialPosition
-          ? runtime.initialY + (sample.y - runtime.path.firstPointY)
-          : sample.y;
-      _applyPathTarget(
-        runtime.binding.targetType,
-        runtime.binding.targetIndex,
-        targetX,
-        targetY,
-      );
-    }
-  }
-
-  void _applyPathTarget(
-    String targetType,
-    int targetIndex,
-    double x,
-    double y,
+  void _renderPlayers(
+    SpriteBatch batch,
+    List<MultiplayerPlayer> players,
+    String? localPlayerId,
   ) {
-    if (targetType == 'layer') {
-      if (targetIndex >= 0 && targetIndex < layerRuntimeStates.size) {
-        final RuntimeTransform target = layerRuntimeStates.get(targetIndex);
-        target.x = x;
-        target.y = y;
+    _localPlayerHighlightCenter = null;
+    _localPlayerHighlightRadius = null;
+    final ui.Color previousBatchColor = batch.getColor();
+    bool usingRemotePlayerOpacity = false;
+    final List<MultiplayerPlayer> orderedPlayers =
+        List<MultiplayerPlayer>.from(players)
+          ..sort((MultiplayerPlayer a, MultiplayerPlayer b) {
+            final bool aIsLocal = a.id == localPlayerId;
+            final bool bIsLocal = b.id == localPlayerId;
+            if (aIsLocal == bIsLocal) {
+              return 0;
+            }
+            return aIsLocal ? 1 : -1;
+          });
+
+    for (final MultiplayerPlayer player in orderedPlayers) {
+      final _AnimatedSpriteFrame frame = _playerFrameFor(player);
+      final bool isLocalPlayer = player.id == localPlayerId;
+      if (!isLocalPlayer) {
+        if (!usingRemotePlayerOpacity) {
+          batch.setColor(1, 1, 1, remotePlayerOpacity);
+          usingRemotePlayerOpacity = true;
+        }
+      } else if (usingRemotePlayerOpacity) {
+        batch.setColor(previousBatchColor);
+        usingRemotePlayerOpacity = false;
       }
+      _drawAnimatedSprite(
+        batch,
+        frame: frame,
+        worldX: player.x,
+        worldY: player.y,
+        width: player.width,
+        height: player.height,
+        flipX: frame.flipX,
+      );
+      if (isLocalPlayer) {
+        final ui.Rect dst = viewport.worldToScreenRect(
+          player.x,
+          player.y,
+          player.width,
+          player.height,
+        );
+        _localPlayerHighlightCenter = ui.Offset(
+          dst.left + dst.width * frame.anchorX,
+          dst.top + dst.height * frame.anchorY,
+        );
+        _localPlayerHighlightRadius =
+            math.max(dst.width, dst.height) * 0.5 + localPlayerRingPadding;
+      }
+    }
+    if (usingRemotePlayerOpacity) {
+      batch.setColor(previousBatchColor);
+    }
+  }
+
+  void _renderGems(SpriteBatch batch, List<MultiplayerGem> gems) {
+    for (final MultiplayerGem gem in gems) {
+      final LevelSprite template =
+          gemTemplateByType[gem.type] ?? gemTemplateByType['green']!;
+      final _AnimatedSpriteFrame frame = _frameFromTemplate(template);
+      _drawAnimatedSprite(
+        batch,
+        frame: frame,
+        worldX: gem.x,
+        worldY: gem.y,
+        width: gem.width,
+        height: gem.height,
+      );
+    }
+  }
+
+  void _drawAnimatedSprite(
+    SpriteBatch batch, {
+    required _AnimatedSpriteFrame frame,
+    required double worldX,
+    required double worldY,
+    required double width,
+    required double height,
+    bool flipX = false,
+  }) {
+    final AssetManager assets = game.getAssetManager();
+    if (!assets.isLoaded(frame.texturePath, Texture)) {
       return;
     }
-    if (targetType == 'zone') {
-      if (targetIndex >= 0 && targetIndex < zoneRuntimeStates.size) {
-        final RuntimeTransform target = zoneRuntimeStates.get(targetIndex);
-        target.x = x;
-        target.y = y;
-      }
+
+    final ui.Rect dst = viewport.worldToScreenRect(
+      worldX,
+      worldY,
+      width,
+      height,
+    );
+    final Texture texture = assets.get(frame.texturePath, Texture);
+    final ui.Rect src = _frameSourceRect(
+      texture,
+      frame.frameWidth,
+      frame.frameHeight,
+      frame.frameIndex,
+    );
+    batch.drawRegion(texture, src, dst, flipX: flipX);
+  }
+
+  void _renderLocalPlayerHighlight() {
+    final ui.Offset? center = _localPlayerHighlightCenter;
+    final double? radius = _localPlayerHighlightRadius;
+    if (center == null || radius == null) {
       return;
     }
-    if (targetType == 'sprite') {
-      if (targetIndex >= 0 && targetIndex < spriteRuntimeStates.size) {
-        final SpriteRuntimeState target = spriteRuntimeStates.get(targetIndex);
-        target.worldX = x;
-        target.worldY = y;
-      }
-    }
-  }
-
-  double _pathProgressAtTime(
-    String behavior,
-    double durationSeconds,
-    double timeSeconds,
-  ) {
-    if (!durationSeconds.isFinite || durationSeconds <= 0) {
-      return 0;
-    }
-
-    final double t = math.max(0, timeSeconds);
-    final String normalizedBehavior = behavior.trim().toLowerCase();
-    if (normalizedBehavior == 'ping_pong' || normalizedBehavior == 'pingpong') {
-      final double cycle = durationSeconds * 2;
-      if (cycle <= 0) {
-        return 0;
-      }
-      final double cycleTime = t % cycle;
-      if (cycleTime <= durationSeconds) {
-        return cycleTime / durationSeconds;
-      }
-      final double backwardsTime = cycleTime - durationSeconds;
-      return 1 - (backwardsTime / durationSeconds);
-    }
-    if (normalizedBehavior == 'once') {
-      return clampDouble(t / durationSeconds, 0, 1);
-    }
-    return (t % durationSeconds) / durationSeconds;
-  }
-
-  void _updateAnimations(double delta) {
-    final double safeDelta = math.max(0, delta);
-    for (int i = 0; i < spriteRuntimeStates.size; i++) {
-      final SpriteRuntimeState runtime = spriteRuntimeStates.get(i);
-      final LevelSprite sprite = levelData.sprites.get(i);
-      final String? overrideAnimationId = gameplayController
-          .animationOverrideForSprite(i);
-      String? animationId = overrideAnimationId;
-      if (animationId == null || animationId.isEmpty) {
-        animationId = sprite.animationId;
-      }
-
-      final String? previousAnimationId = spriteCurrentAnimationId[i];
-      if ((previousAnimationId == null && animationId != null) ||
-          (previousAnimationId != null && previousAnimationId != animationId)) {
-        spriteAnimationElapsed.set(i, 0);
-      }
-      spriteCurrentAnimationId[i] = animationId;
-
-      if (animationId == null || animationId.isEmpty) {
-        runtime.animationId = null;
-        runtime.texturePath = sprite.texturePath;
-        runtime.frameWidth = math.max(1, sprite.width.round());
-        runtime.frameHeight = math.max(1, sprite.height.round());
-        runtime.frameIndex = math.max(0, sprite.frameIndex);
-        runtime.anchorX = sprite.anchorX;
-        runtime.anchorY = sprite.anchorY;
-        continue;
-      }
-
-      final AnimationClip? clip = levelData.animationClips.get(animationId);
-      if (clip == null) {
-        runtime.animationId = null;
-        runtime.texturePath = sprite.texturePath;
-        runtime.frameWidth = math.max(1, sprite.width.round());
-        runtime.frameHeight = math.max(1, sprite.height.round());
-        runtime.frameIndex = math.max(0, sprite.frameIndex);
-        runtime.anchorX = sprite.anchorX;
-        runtime.anchorY = sprite.anchorY;
-        continue;
-      }
-
-      runtime.texturePath = clip.texturePath ?? sprite.texturePath;
-      runtime.frameWidth = clip.frameWidth > 0
-          ? clip.frameWidth
-          : math.max(1, sprite.width.round());
-      runtime.frameHeight = clip.frameHeight > 0
-          ? clip.frameHeight
-          : math.max(1, sprite.height.round());
-      runtime.animationId = animationId;
-
-      double elapsed = spriteAnimationElapsed.get(i) + safeDelta;
-      spriteAnimationElapsed.set(i, elapsed);
-
-      final int start = math.max(0, clip.startFrame);
-      final int end = math.max(start, clip.endFrame);
-      final int span = math.max(1, end - start + 1);
-      final double fps = clip.fps.isFinite && clip.fps > 0
-          ? clip.fps
-          : defaultAnimationFps;
-      final int ticks = (elapsed * fps).floor();
-      final int offset = clip.loop
-          ? _positiveMod(ticks, span)
-          : math.min(ticks, span - 1);
-      runtime.frameIndex = start + offset;
-
-      final FrameRig? frameRig = clip.frameRigs.get(runtime.frameIndex);
-      runtime.anchorX = frameRig?.anchorX ?? clip.anchorX;
-      runtime.anchorY = frameRig?.anchorY ?? clip.anchorY;
-    }
-  }
-
-  int _positiveMod(int value, int divisor) {
-    if (divisor <= 0) {
-      return 0;
-    }
-    final int mod = value % divisor;
-    return mod < 0 ? mod + divisor : mod;
-  }
-
-  void _renderHud() {
     final ShapeRenderer shapes = game.getShapeRenderer();
+    shapes.begin(ShapeType.line);
+    shapes.setColor(localPlayerColor);
+    shapes.circle(center.dx, center.dy, radius, 24);
+    shapes.setColor(colorValueOf('FFE07A88'));
+    shapes.circle(center.dx, center.dy, math.max(4, radius - 3), 24);
+    shapes.end();
+  }
+
+  void _renderLeaderboard(AppData appData) {
+    final double screenWidth = Gdx.graphics.getWidth().toDouble();
+    final double screenHeight = Gdx.graphics.getHeight().toDouble();
+    final ShapeRenderer shapes = game.getShapeRenderer();
+    shapes.begin(ShapeType.filled);
+    shapes.setColor(panelFill);
+    shapes.rect(
+      screenWidth - leaderboardWidth,
+      0,
+      leaderboardWidth,
+      screenHeight,
+    );
+    shapes.end();
+
+    shapes.begin(ShapeType.line);
+    shapes.setColor(panelStroke);
+    shapes.rect(
+      screenWidth - leaderboardWidth,
+      0,
+      leaderboardWidth,
+      screenHeight,
+    );
+    shapes.end();
+
     final SpriteBatch batch = game.getBatch();
     final BitmapFont font = game.getFont();
-    final double hudWidth = Gdx.graphics.getWidth().toDouble();
-
     batch.begin();
-    font.getData().setScale(hudBackLabelScale);
-    font.setColor(hudTextColor);
-    double backTextX = hudMargin;
-    if (backIconTexture != null) {
-      final ui.Rect iconSrc = ui.Rect.fromLTWH(
-        0,
-        0,
-        backIconTexture!.width.toDouble(),
-        backIconTexture!.height.toDouble(),
+
+    _drawLeftAlignedText(
+      batch,
+      font,
+      'Leaderboard',
+      screenWidth - leaderboardWidth + leaderboardPadding,
+      34,
+      1.45,
+      titleColor,
+    );
+    _drawLeftAlignedText(
+      batch,
+      font,
+      'Remaining gems: ${appData.remainingGems}',
+      screenWidth - leaderboardWidth + leaderboardPadding,
+      64,
+      1.0,
+      dimTextColor,
+    );
+
+    PlayerListRenderer.render(
+      batch: batch,
+      font: font,
+      layout: layout,
+      players: appData.sortedPlayers,
+      localPlayerId: appData.playerId,
+      left: screenWidth - leaderboardWidth + leaderboardPadding,
+      right: screenWidth - leaderboardPadding,
+      startY: leaderboardStartY,
+      textColor: textColor,
+      localPlayerColor: localPlayerColor,
+      drawLeftAlignedText: _drawLeftAlignedText,
+      drawRightAlignedText: _drawRightAlignedText,
+      style: PlayerListRenderer.gameplayStyle,
+    );
+
+    if (appData.sortedPlayers.isEmpty) {
+      _drawLeftAlignedText(
+        batch,
+        font,
+        'Waiting for players...',
+        screenWidth - leaderboardWidth + leaderboardPadding,
+        leaderboardStartY,
+        1.0,
+        dimTextColor,
       );
-      final ui.Rect iconDst = ui.Rect.fromLTWH(
-        hudMargin,
-        hudMargin + (hudButtonHeight - hudIconSize) * 0.5,
-        hudIconSize,
-        hudIconSize,
-      );
-      batch.drawRegion(backIconTexture!, iconSrc, iconDst);
-      backTextX = hudMargin + hudIconSize + hudIconTextGap;
-    }
-    font.drawText(hudBackLabel, backTextX, hudMargin + hudButtonHeight * 0.72);
-    font.getData().setScale(1);
-
-    final GameplayController gc = gameplayController;
-    String? topRightLabel;
-    bool showLifeBar = false;
-    double lifePercent = 0;
-    if (gc is GameplayControllerTopDown) {
-      topRightLabel =
-          'Arbres: ${gc.getCollectedArbresCount()}/${gc.getTotalArbresCount()}';
-    } else if (gc is GameplayControllerPlatformer) {
-      topRightLabel =
-          'Gems: ${gc.getCollectedGemsCount()}/${gc.getTotalGemsCount()}';
-      showLifeBar = true;
-      lifePercent = clampDouble(gc.getLifePercent(), 0, 100);
-    }
-
-    font.setColor(hudTextColor);
-    final double rightEdgeX = hudWidth - hudMargin;
-    final double topTextY = hudMargin + hudButtonHeight * 0.72;
-    double gemsTextX = 0;
-    double gemsTextY = topTextY;
-    double gemsTextHeight = 0;
-    double lifeTextX = 0;
-    double lifeTextY = topTextY;
-    final String lifeText = 'Life ${lifePercent.round()}%';
-    final double lifeBarX = rightEdgeX - hudLifeBarWidth;
-    double lifeBarY = 0;
-
-    if (topRightLabel != null) {
-      font.getData().setScale(hudCounterScale);
-      hudLayout.setText(font, topRightLabel);
-      gemsTextX = rightEdgeX - hudLayout.width;
-      gemsTextHeight = hudLayout.height;
-      font.getData().setScale(1);
-    }
-
-    if (showLifeBar) {
-      font.getData().setScale(hudLifeTextScale);
-      hudLayout.setText(font, lifeText);
-      lifeTextX = rightEdgeX - hudLayout.width;
-      lifeBarY = lifeTextY + hudLifeBarTopGap;
-      if (topRightLabel != null) {
-        gemsTextY = lifeBarY + hudLifeBarHeight + hudRowGap + gemsTextHeight;
-      }
-      font.getData().setScale(1);
-    }
-
-    if (showLifeBar) {
-      batch.end();
-
-      shapes.begin(ShapeType.filled);
-      shapes.setColor(hudLifeBarBg);
-      shapes.rect(lifeBarX, lifeBarY, hudLifeBarWidth, hudLifeBarHeight);
-      shapes.setColor(hudLifeBarFill);
-      shapes.rect(
-        lifeBarX,
-        lifeBarY,
-        hudLifeBarWidth * (lifePercent / 100),
-        hudLifeBarHeight,
-      );
-      shapes.end();
-
-      shapes.begin(ShapeType.line);
-      shapes.setColor(hudLifeBarBorder);
-      shapes.rect(lifeBarX, lifeBarY, hudLifeBarWidth, hudLifeBarHeight);
-      shapes.end();
-
-      batch.begin();
-    }
-
-    if (topRightLabel != null) {
-      font.getData().setScale(hudCounterScale);
-      hudLayout.setText(font, topRightLabel);
-      font.drawText(topRightLabel, gemsTextX, gemsTextY);
-      font.getData().setScale(1);
-    }
-
-    if (showLifeBar) {
-      font.getData().setScale(hudLifeTextScale);
-      hudLayout.setText(font, lifeText);
-      font.drawText(lifeText, lifeTextX, lifeTextY);
-      font.getData().setScale(1);
     }
 
     batch.end();
   }
 
-  void _loadHudAssets() {
-    if (game.getAssetManager().isLoaded('other/enrrere.png', Texture)) {
-      backIconTexture = game.getAssetManager().get(
-        'other/enrrere.png',
-        Texture,
-      );
-    }
-  }
-
-  void _renderEndOverlayIfActive() {
-    if (!_isEndOverlayActive()) {
-      return;
-    }
-
+  void _renderWinnerOverlay(AppData appData) {
     final ShapeRenderer shapes = game.getShapeRenderer();
-    final SpriteBatch batch = game.getBatch();
-    final BitmapFont font = game.getFont();
-
+    final double screenWidth = Gdx.graphics.getWidth().toDouble();
+    final double screenHeight = Gdx.graphics.getHeight().toDouble();
     shapes.begin(ShapeType.filled);
-    shapes.setColor(endOverlayDim);
-    shapes.rect(
-      0,
-      0,
-      Gdx.graphics.getWidth().toDouble(),
-      Gdx.graphics.getHeight().toDouble(),
-    );
+    shapes.setColor(winnerOverlayColor);
+    shapes.rect(0, 0, screenWidth, screenHeight);
     shapes.end();
 
+    final MultiplayerPlayer? winner = appData.sortedPlayers.isEmpty
+        ? null
+        : appData.sortedPlayers.first;
+    final String title = winner == null
+        ? 'Match Finished'
+        : '${winner.name} wins with ${winner.score}';
+
+    final SpriteBatch batch = game.getBatch();
+    final BitmapFont font = game.getFont();
     batch.begin();
     _drawCenteredText(
       batch,
       font,
-      _endOverlayTitle(),
-      Gdx.graphics.getHeight() * 0.45,
-      endOverlayTitleScale,
-      hudTextColor,
+      title,
+      screenHeight * 0.46,
+      2.2,
+      titleColor,
+      maxWidth: screenWidth - leaderboardWidth,
     );
-    if (endOverlayElapsedSeconds >= endOverlayReturnDelaySeconds) {
-      _drawCenteredText(
-        batch,
-        font,
-        _endOverlayPrompt(),
-        Gdx.graphics.getHeight() * 0.45 + endOverlayPromptGap,
-        endOverlayPromptScale,
-        hudTextColor,
-      );
-    }
+    _drawCenteredText(
+      batch,
+      font,
+      'All gems were collected.',
+      screenHeight * 0.53,
+      1.15,
+      textColor,
+      maxWidth: screenWidth - leaderboardWidth,
+    );
     batch.end();
   }
 
-  void _drawCenteredText(
-    SpriteBatch batch,
-    BitmapFont font,
-    String text,
-    double y,
-    double scale,
-    ui.Color color,
-  ) {
-    font.getData().setScale(scale);
-    font.setColor(color);
-    hudLayout.setText(font, text);
-    final double x = (Gdx.graphics.getWidth() - hudLayout.width) * 0.5;
-    font.draw(batch, hudLayout, x, y);
-    font.getData().setScale(1);
-  }
-
-  bool _handleHudBackInput() {
-    if (!Gdx.input.justTouched()) {
-      return false;
-    }
-    final double x = Gdx.input.getX().toDouble();
-    final double y = Gdx.input.getY().toDouble();
-    if (backButtonBounds.contains(x, y)) {
-      _returnToMenu();
-      return true;
-    }
-    return false;
-  }
-
-  void _updateBackButtonBounds() {
-    final BitmapFont font = game.getFont();
-    font.getData().setScale(hudBackLabelScale);
-    hudLayout.setText(font, hudBackLabel);
-    font.getData().setScale(1);
-    final double iconWidth = backIconTexture != null
-        ? hudIconSize + hudIconTextGap
-        : 0;
-    backButtonBounds.set(
-      hudMargin,
-      hudMargin,
-      iconWidth + hudLayout.width + 16,
-      hudButtonHeight,
-    );
-  }
-
-  void _updateEndOverlayStateIfNeeded() {
-    if (_isEndOverlayActive()) {
+  void _submitDirection(AppData appData, String direction) {
+    if (_lastSubmittedDirection == direction) {
       return;
     }
-
-    final GameplayController gc = gameplayController;
-    if (gc is GameplayControllerTopDown) {
-      if (gc.isWin()) {
-        _endOverlayState = _EndOverlayState.level0Win;
-      }
-    } else if (gc is GameplayControllerPlatformer) {
-      if (gc.isGameOver()) {
-        _endOverlayState = _EndOverlayState.level1Lose;
-      } else if (gc.isWin()) {
-        _endOverlayState = _EndOverlayState.level1Win;
-      }
-    }
-
-    if (_isEndOverlayActive()) {
-      endOverlayElapsedSeconds = 0;
-    }
+    _lastSubmittedDirection = direction;
+    appData.updateMovementDirection(direction);
   }
 
-  bool _isEndOverlayActive() {
-    return _endOverlayState != _EndOverlayState.none;
-  }
+  String _readCurrentDirection() {
+    final bool left =
+        Gdx.input.isKeyPressed(Input.keys.left) ||
+        Gdx.input.isKeyPressed(Input.keys.a);
+    final bool right =
+        Gdx.input.isKeyPressed(Input.keys.right) ||
+        Gdx.input.isKeyPressed(Input.keys.d);
+    final bool up =
+        Gdx.input.isKeyPressed(Input.keys.up) ||
+        Gdx.input.isKeyPressed(Input.keys.w);
+    final bool down =
+        Gdx.input.isKeyPressed(Input.keys.down) ||
+        Gdx.input.isKeyPressed(Input.keys.s);
 
-  void _updateEndOverlay(double delta) {
-    endOverlayElapsedSeconds += math.max(0, delta);
-    if (endOverlayElapsedSeconds < endOverlayReturnDelaySeconds) {
-      return;
+    if (up && left) {
+      return 'upLeft';
     }
-
-    if (Gdx.input.justTouched() || _isAnyKeyJustPressed()) {
-      _returnToMenu();
+    if (up && right) {
+      return 'upRight';
     }
-  }
-
-  bool _isAnyKeyJustPressed() {
-    final List<int> keys = <int>[
-      Input.keys.enter,
-      Input.keys.space,
-      Input.keys.escape,
-      Input.keys.up,
-      Input.keys.down,
-      Input.keys.left,
-      Input.keys.right,
-      Input.keys.w,
-      Input.keys.a,
-      Input.keys.s,
-      Input.keys.d,
-    ];
-    for (final int key in keys) {
-      if (Gdx.input.isKeyJustPressed(key)) {
-        return true;
-      }
+    if (down && left) {
+      return 'downLeft';
     }
-    return false;
-  }
-
-  String _endOverlayTitle() {
-    switch (_endOverlayState) {
-      case _EndOverlayState.level0Win:
-        return 'Has Guanyat';
-      case _EndOverlayState.level1Lose:
-        return 'You Lose';
-      case _EndOverlayState.level1Win:
-        return 'You Win';
-      case _EndOverlayState.none:
-        return '';
+    if (down && right) {
+      return 'downRight';
     }
-  }
-
-  String _endOverlayPrompt() {
-    if (_endOverlayState == _EndOverlayState.level0Win) {
-      return 'Apreta qualsevol tecla per tornar';
+    if (up) {
+      return 'up';
     }
-    return 'Press any key to return to main menu';
-  }
-
-  void _handleDebugOverlayInput() {
-    if (!Gdx.input.isKeyJustPressed(Input.keys.f3)) {
-      return;
+    if (down) {
+      return 'down';
     }
-
-    final bool shiftPressed =
-        Gdx.input.isKeyPressed(Input.keys.shiftLeft) ||
-        Gdx.input.isKeyPressed(Input.keys.shiftRight);
-    if (shiftPressed) {
-      _debugOverlayMode = _nextDebugOverlayMode(_debugOverlayMode);
-    } else {
-      _debugOverlayMode = _debugOverlayMode == _DebugOverlayMode.none
-          ? _DebugOverlayMode.both
-          : _DebugOverlayMode.none;
+    if (left) {
+      return 'left';
     }
-
-    Gdx.app.log(
-      'PlayScreen',
-      'Debug overlay: ${_debugOverlayMode.name.toLowerCase()}',
-    );
+    if (right) {
+      return 'right';
+    }
+    return 'none';
   }
 
   void _applyInitialCameraFromLevel() {
@@ -828,8 +438,8 @@ class PlayScreen extends ScreenAdapter {
     camera.update();
   }
 
-  void _updateCameraForGameplay() {
-    if (!gameplayController.hasCameraTarget()) {
+  void _updateCameraForGameplay(MultiplayerPlayer? player) {
+    if (player == null) {
       camera.update();
       return;
     }
@@ -840,237 +450,353 @@ class PlayScreen extends ScreenAdapter {
     final double viewH = math.max(1, viewport.worldHeight);
     final double halfW = viewW * 0.5;
     final double halfH = viewH * 0.5;
-
-    final double minX = math.min(halfW, worldW - halfW);
-    final double maxX = math.max(halfW, worldW - halfW);
-    final double minY = math.min(halfH, worldH - halfH);
-    final double maxY = math.max(halfH, worldH - halfH);
-
-    final double playerX = gameplayController.getCameraTargetX();
-    final double playerY = gameplayController.getCameraTargetY();
-    final double currentCenterX = camera.x;
-    final double currentCenterY = camera.y;
-
-    final double deadZoneHalfW = viewW * cameraDeadZoneFractionX * 0.5;
-    final double deadZoneHalfH = viewH * cameraDeadZoneFractionY * 0.5;
-
-    double targetCenterX = currentCenterX;
-    if (playerX < currentCenterX - deadZoneHalfW) {
-      targetCenterX = playerX + deadZoneHalfW;
-    } else if (playerX > currentCenterX + deadZoneHalfW) {
-      targetCenterX = playerX - deadZoneHalfW;
-    }
-
-    double targetCenterY = currentCenterY;
-    if (playerY < currentCenterY - deadZoneHalfH) {
-      targetCenterY = playerY + deadZoneHalfH;
-    } else if (playerY > currentCenterY + deadZoneHalfH) {
-      targetCenterY = playerY - deadZoneHalfH;
-    }
-
-    targetCenterX = clampDouble(targetCenterX, minX, maxX);
-    targetCenterY = clampDouble(targetCenterY, minY, maxY);
-
-    final double dt = clampDouble(
-      Gdx.graphics.getDeltaTime(),
-      0,
-      maxFrameSeconds,
+    final double targetX = clampDouble(
+      player.x + player.width * 0.5,
+      halfW,
+      worldW - halfW,
     );
-    final double followAlpha =
-        1 - math.exp(-cameraFollowSmoothnessPerSecond * dt);
+    final double targetY = clampDouble(
+      player.y + player.height * 0.5,
+      halfH,
+      worldH - halfH,
+    );
 
-    double centerX = MathUtils.lerp(currentCenterX, targetCenterX, followAlpha);
-    double centerY = MathUtils.lerp(currentCenterY, targetCenterY, followAlpha);
-
-    centerX = clampDouble(centerX, minX, maxX);
-    centerY = clampDouble(centerY, minY, maxY);
-
-    camera.setPosition(centerX, centerY);
+    camera.setPosition(targetX, targetY);
     camera.update();
   }
 
-  GameplayController _createGameplayController() {
-    if (_isPlatformerLevel(levelData)) {
-      Gdx.app.log('PlayScreen', 'Gameplay mode: platformer');
-      return GameplayControllerPlatformer(
-        levelData,
-        spriteRuntimeStates,
-        layerVisibilityStates,
-        zoneRuntimeStates,
-        zonePreviousRuntimeStates,
-      );
-    }
-
-    Gdx.app.log('PlayScreen', 'Gameplay mode: topdown');
-    return GameplayControllerTopDown(
-      levelData,
-      spriteRuntimeStates,
-      layerVisibilityStates,
-      zoneRuntimeStates,
-      zonePreviousRuntimeStates,
-    );
-  }
-
-  bool _isPlatformerLevel(LevelData levelData) {
-    for (final LevelZone zone in levelData.zones.iterable()) {
-      final String type = normalize(zone.type);
-      final String name = normalize(zone.name);
-      if (containsAny(type, <String>['floor', 'death']) ||
-          containsAny(name, <String>['floor', 'death'])) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  Viewport _createViewport(LevelData levelData, OrthographicCamera camera) {
-    switch (levelData.viewportAdaptation) {
+  Viewport _createViewport(LevelData data, OrthographicCamera targetCamera) {
+    switch (data.viewportAdaptation) {
       case 'expand':
         return ExtendViewport(
-          levelData.viewportWidth,
-          levelData.viewportHeight,
-          camera,
+          data.viewportWidth,
+          data.viewportHeight,
+          targetCamera,
         );
       case 'stretch':
         return StretchViewport(
-          levelData.viewportWidth,
-          levelData.viewportHeight,
-          camera,
+          data.viewportWidth,
+          data.viewportHeight,
+          targetCamera,
         );
       case 'letterbox':
       default:
         return FitViewport(
-          levelData.viewportWidth,
-          levelData.viewportHeight,
-          camera,
+          data.viewportWidth,
+          data.viewportHeight,
+          targetCamera,
         );
     }
   }
 
-  List<bool> _buildInitialLayerVisibility(LevelData levelData) {
-    final List<bool> states = List<bool>.filled(levelData.layers.size, true);
-    for (int i = 0; i < levelData.layers.size; i++) {
-      states[i] = levelData.layers.get(i).visible;
-    }
-    return states;
-  }
-
-  _DebugOverlayMode _nextDebugOverlayMode(_DebugOverlayMode mode) {
-    switch (mode) {
-      case _DebugOverlayMode.none:
-        return _DebugOverlayMode.zones;
-      case _DebugOverlayMode.zones:
-        return _DebugOverlayMode.paths;
-      case _DebugOverlayMode.paths:
-        return _DebugOverlayMode.both;
-      case _DebugOverlayMode.both:
-        return _DebugOverlayMode.none;
-    }
-  }
-
-  void _returnToMenu() {
-    game.unloadReferencedAssetsForLevel(levelIndex);
-    game.setScreen(MenuScreen(game));
-  }
-}
-
-class _PathBindingRuntime {
-  final _PathRuntime path;
-  final LevelPathBinding binding;
-  final double initialX;
-  final double initialY;
-
-  _PathBindingRuntime(this.path, this.binding, this.initialX, this.initialY);
-}
-
-class _PathRuntime {
-  final List<Vector2> points;
-  final List<double> cumulativeDistances;
-  final double totalDistance;
-  final double firstPointX;
-  final double firstPointY;
-
-  _PathRuntime(
-    this.points,
-    this.cumulativeDistances,
-    this.totalDistance,
-    this.firstPointX,
-    this.firstPointY,
-  );
-
-  static _PathRuntime? from(LevelPath path) {
-    if (path.points.size < 2) {
-      return null;
-    }
-
-    final List<Vector2> points = path.points.toList();
-    final List<double> cumulativeDistances = <double>[0];
-    double totalDistance = 0;
-    for (int i = 1; i < points.length; i++) {
-      final Vector2 prev = points[i - 1];
-      final Vector2 curr = points[i];
-      final double dx = curr.x - prev.x;
-      final double dy = curr.y - prev.y;
-      totalDistance += math.sqrt(dx * dx + dy * dy);
-      cumulativeDistances.add(totalDistance);
-    }
-    final Vector2 first = points.first;
-    return _PathRuntime(
-      points,
-      cumulativeDistances,
-      totalDistance,
-      first.x,
-      first.y,
+  List<bool> _buildInitialLayerVisibility(LevelData data) {
+    return List<bool>.generate(
+      data.layers.size,
+      (int index) => data.layers.get(index).visible,
     );
   }
 
-  _PathSample sampleAtProgress(double progress) {
-    if (points.isEmpty) {
-      return _PathSample(0, 0);
+  Array<SpriteRuntimeState> _createHiddenTemplateRuntimes(LevelData data) {
+    final Array<SpriteRuntimeState> runtimes = Array<SpriteRuntimeState>();
+    for (int i = 0; i < data.sprites.size; i++) {
+      final LevelSprite sprite = data.sprites.get(i);
+      runtimes.add(
+        SpriteRuntimeState(
+          sprite.frameIndex,
+          0,
+          0,
+          sprite.x,
+          sprite.y,
+          false,
+          sprite.flipX,
+          sprite.flipY,
+          math.max(1, sprite.width.round()),
+          math.max(1, sprite.height.round()),
+          sprite.texturePath,
+          sprite.animationId,
+        ),
+      );
     }
-    if (points.length < 2 || totalDistance <= 0) {
-      final Vector2 first = points.first;
-      return _PathSample(first.x, first.y);
-    }
+    return runtimes;
+  }
 
-    final double clampedProgress = clampDouble(progress, 0, 1);
-    final double targetDistance = totalDistance * clampedProgress;
-    for (int i = 1; i < points.length; i++) {
-      final double segmentStart = cumulativeDistances[i - 1];
-      final double segmentEnd = cumulativeDistances[i];
-      if (targetDistance > segmentEnd && i < points.length - 1) {
+  Array<RuntimeTransform> _createLayerRuntimeStates(LevelData data) {
+    final Array<RuntimeTransform> runtimes = Array<RuntimeTransform>();
+    for (int i = 0; i < data.layers.size; i++) {
+      final LevelLayer layer = data.layers.get(i);
+      runtimes.add(RuntimeTransform(layer.x, layer.y));
+    }
+    return runtimes;
+  }
+
+  Array<RuntimeTransform> _createZoneRuntimeStates(LevelData data) {
+    final Array<RuntimeTransform> runtimes = Array<RuntimeTransform>();
+    for (int i = 0; i < data.zones.size; i++) {
+      final LevelZone zone = data.zones.get(i);
+      runtimes.add(RuntimeTransform(zone.x, zone.y));
+    }
+    return runtimes;
+  }
+
+  void _applyServerLayerTransforms(List<TransformSnapshot> transforms) {
+    for (final TransformSnapshot transform in transforms) {
+      if (transform.index < 0 || transform.index >= layerRuntimeStates.size) {
         continue;
       }
-      final double segmentDistance = segmentEnd - segmentStart;
-      if (segmentDistance <= 0) {
-        final Vector2 point = points[i];
-        return _PathSample(point.x, point.y);
+      final RuntimeTransform runtime = layerRuntimeStates.get(transform.index);
+      runtime.x = transform.x;
+      runtime.y = transform.y;
+    }
+  }
+
+  void _applyServerZoneTransforms(List<TransformSnapshot> transforms) {
+    for (final TransformSnapshot transform in transforms) {
+      if (transform.index < 0 || transform.index >= zoneRuntimeStates.size) {
+        continue;
       }
-      final double localT = clampDouble(
-        (targetDistance - segmentStart) / segmentDistance,
-        0,
-        1,
-      );
-      final Vector2 a = points[i - 1];
-      final Vector2 b = points[i];
-      return _PathSample(
-        a.x + (b.x - a.x) * localT,
-        a.y + (b.y - a.y) * localT,
+      final RuntimeTransform runtime = zoneRuntimeStates.get(transform.index);
+      runtime.x = transform.x;
+      runtime.y = transform.y;
+    }
+  }
+
+  LevelSprite _findPlayerTemplate(LevelData data) {
+    for (final LevelSprite sprite in data.sprites.iterable()) {
+      if (normalize(sprite.type).contains('hero')) {
+        return sprite;
+      }
+    }
+    return data.sprites.first();
+  }
+
+  Map<String, LevelSprite> _buildGemTemplates(LevelData data) {
+    final Map<String, LevelSprite> templates = <String, LevelSprite>{};
+    for (final LevelSprite sprite in data.sprites.iterable()) {
+      final String type = normalize(sprite.type);
+      if (type.contains('gem purple')) {
+        templates['purple'] = sprite;
+      } else if (type.contains('gem yellow')) {
+        templates['yellow'] = sprite;
+      } else if (type.contains('gem green')) {
+        templates['green'] = sprite;
+      } else if (type.contains('gem blue')) {
+        templates['blue'] = sprite;
+      }
+    }
+    return templates;
+  }
+
+  _AnimatedSpriteFrame _playerFrameFor(MultiplayerPlayer player) {
+    final String facing = player.facing;
+    final bool moving = player.moving;
+    bool flipX = false;
+    String animationName;
+
+    switch (facing) {
+      case 'left':
+        animationName = moving
+            ? 'Character  Walk Right'
+            : 'Character Idle Right';
+        flipX = true;
+        break;
+      case 'upLeft':
+        animationName = moving
+            ? 'Character  Walk Up-Right'
+            : 'Character Idle Up-Right';
+        flipX = true;
+        break;
+      case 'downLeft':
+        animationName = moving
+            ? 'Character  Walk Down-Right'
+            : 'Character Idle Down-Right';
+        flipX = true;
+        break;
+      case 'right':
+        animationName = moving
+            ? 'Character  Walk Right'
+            : 'Character Idle Right';
+        break;
+      case 'upRight':
+        animationName = moving
+            ? 'Character  Walk Up-Right'
+            : 'Character Idle Up-Right';
+        break;
+      case 'up':
+        animationName = moving ? 'Character  Walk Up' : 'Character Idle Up';
+        break;
+      case 'downRight':
+        animationName = moving
+            ? 'Character  Walk Down-Right'
+            : 'Character Idle Down-Right';
+        break;
+      case 'down':
+      default:
+        animationName = moving ? 'Character  Walk Down' : 'Character Idle Down';
+        break;
+    }
+
+    return _frameFromTemplate(
+      playerTemplate,
+      animationName: animationName,
+      flipX: flipX,
+    );
+  }
+
+  _AnimatedSpriteFrame _frameFromTemplate(
+    LevelSprite template, {
+    String? animationName,
+    bool flipX = false,
+  }) {
+    final String? animationId = animationName == null
+        ? template.animationId
+        : _findAnimationIdByName(animationName);
+    if (animationId == null || animationId.isEmpty) {
+      return _AnimatedSpriteFrame(
+        texturePath: template.texturePath,
+        frameWidth: math.max(1, template.width.round()),
+        frameHeight: math.max(1, template.height.round()),
+        frameIndex: math.max(0, template.frameIndex),
+        anchorX: template.anchorX,
+        anchorY: template.anchorY,
+        flipX: flipX,
       );
     }
 
-    final Vector2 last = points.last;
-    return _PathSample(last.x, last.y);
+    final AnimationClip? clip = levelData.animationClips.get(animationId);
+    if (clip == null) {
+      return _AnimatedSpriteFrame(
+        texturePath: template.texturePath,
+        frameWidth: math.max(1, template.width.round()),
+        frameHeight: math.max(1, template.height.round()),
+        frameIndex: math.max(0, template.frameIndex),
+        anchorX: template.anchorX,
+        anchorY: template.anchorY,
+        flipX: flipX,
+      );
+    }
+
+    final int start = math.max(0, clip.startFrame);
+    final int end = math.max(start, clip.endFrame);
+    final int span = math.max(1, end - start + 1);
+    final double fps = clip.fps.isFinite && clip.fps > 0 ? clip.fps : 8;
+    final int offset = ((elapsedSeconds * fps).floor()) % span;
+    final int frameIndex = start + offset;
+    final FrameRig? frameRig = clip.frameRigs.get(frameIndex);
+    return _AnimatedSpriteFrame(
+      texturePath: clip.texturePath ?? template.texturePath,
+      frameWidth: clip.frameWidth > 0
+          ? clip.frameWidth
+          : math.max(1, template.width.round()),
+      frameHeight: clip.frameHeight > 0
+          ? clip.frameHeight
+          : math.max(1, template.height.round()),
+      frameIndex: frameIndex,
+      anchorX: frameRig?.anchorX ?? clip.anchorX,
+      anchorY: frameRig?.anchorY ?? clip.anchorY,
+      flipX: flipX,
+    );
+  }
+
+  String? _findAnimationIdByName(String animationName) {
+    final String normalized = normalize(animationName);
+    for (final MapEntry<String, AnimationClip> entry
+        in levelData.animationClips.entries()) {
+      if (normalize(entry.value.name) == normalized) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
+  ui.Rect _frameSourceRect(
+    Texture texture,
+    int frameWidth,
+    int frameHeight,
+    int frameIndex,
+  ) {
+    final int safeWidth = math.max(1, frameWidth);
+    final int safeHeight = math.max(1, frameHeight);
+    final int cols = math.max(1, texture.width ~/ safeWidth);
+    final int rows = math.max(1, texture.height ~/ safeHeight);
+    final int total = cols * rows;
+    final int safeFrame = clampInt(frameIndex, 0, total - 1);
+    final int srcCol = safeFrame % cols;
+    final int srcRow = safeFrame ~/ cols;
+    return ui.Rect.fromLTWH(
+      (srcCol * safeWidth).toDouble(),
+      (srcRow * safeHeight).toDouble(),
+      safeWidth.toDouble(),
+      safeHeight.toDouble(),
+    );
+  }
+
+  void _drawCenteredText(
+    SpriteBatch batch,
+    BitmapFont font,
+    String text,
+    double y,
+    double scale,
+    ui.Color color, {
+    double? maxWidth,
+  }) {
+    font.getData().setScale(scale);
+    font.setColor(color);
+    layout.setText(font, text);
+    final double width =
+        maxWidth ?? Gdx.graphics.getWidth().toDouble() - leaderboardWidth;
+    final double x = (width - layout.width) * 0.5;
+    font.draw(batch, layout, x, y);
+    font.getData().setScale(1);
+  }
+
+  void _drawLeftAlignedText(
+    SpriteBatch batch,
+    BitmapFont font,
+    String text,
+    double x,
+    double y,
+    double scale,
+    ui.Color color,
+  ) {
+    font.getData().setScale(scale);
+    font.setColor(color);
+    font.drawText(text, x, y);
+    font.getData().setScale(1);
+  }
+
+  void _drawRightAlignedText(
+    SpriteBatch batch,
+    BitmapFont font,
+    String text,
+    double right,
+    double y,
+    double scale,
+    ui.Color color,
+  ) {
+    font.getData().setScale(scale);
+    font.setColor(color);
+    layout.setText(font, text);
+    font.draw(batch, layout, right - layout.width, y);
+    font.getData().setScale(1);
   }
 }
 
-class _PathSample {
-  final double x;
-  final double y;
+class _AnimatedSpriteFrame {
+  final String texturePath;
+  final int frameWidth;
+  final int frameHeight;
+  final int frameIndex;
+  final double anchorX;
+  final double anchorY;
+  final bool flipX;
 
-  _PathSample(this.x, this.y);
+  const _AnimatedSpriteFrame({
+    required this.texturePath,
+    required this.frameWidth,
+    required this.frameHeight,
+    required this.frameIndex,
+    required this.anchorX,
+    required this.anchorY,
+    required this.flipX,
+  });
 }
-
-enum _DebugOverlayMode { none, zones, paths, both }
-
-enum _EndOverlayState { none, level0Win, level1Lose, level1Win }
