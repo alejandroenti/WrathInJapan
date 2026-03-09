@@ -1,0 +1,1 @@
+console.log('Creant el projecte de node')
