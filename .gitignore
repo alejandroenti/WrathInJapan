@@ -109,11 +109,11 @@ game_server/*.tgz
 game_server/.yarn-integrity
 
 # dotenv environment variable files
-game_server/.env
-game_server/.env.development.local
-game_server/.env.test.local
-game_server/.env.production.local
-game_server/.env.local
+game_server/src/.env
+game_server/src/.env.development.local
+game_server/src/.env.test.local
+game_server/src/.env.production.local
+game_server/src/.env.local
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
