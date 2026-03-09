@@ -1,0 +1,22 @@
+{
+  "name": "Wrath In Japan",
+  "description": "",
+  "levels": [],
+  "levelGroups": [
+    {
+      "id": "__main__",
+      "name": "Main",
+      "collapsed": false
+    }
+  ],
+  "mediaAssets": [],
+  "mediaGroups": [
+    {
+      "id": "__main__",
+      "name": "Main",
+      "collapsed": false
+    }
+  ],
+  "zoneTypes": [],
+  "animationsFile": "animations/animations.json"
+}

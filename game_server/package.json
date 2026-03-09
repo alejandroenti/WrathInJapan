@@ -4,10 +4,20 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+        "dev": "node --watch --watch-path ./src ./src/app.js",
+        "pm2start": "pm2 start ./src/app.js",
+        "pm2list": "pm2 list",
+        "pm2stop": "pm2 delete app",
+        "pm2logs": "pm2 logs",
+        "sync-assets": "bash ./getAssets.sh"
+    },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "dependencies": {
+        "express": "^4.22.1",
+        "uuid": "^11.1.0",
+        "ws": "^8.18.1"
+    }
 }
