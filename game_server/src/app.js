@@ -5,10 +5,11 @@ const path = require('path');
 
 const GameLogic = require('./gameLogic.js');
 const webSockets = require('./utilsWebSockets.js');
+const GameMessages = require('./utilsGameMessages.js');
 const GameLoop = require('./utilsGameLoop.js');
 
 loadEnvFiles([
-  path.resolve(__dirname, '.env')
+  path.resolve(__dirname, 'config.env')
 ]);
 
 const debug = process.env.DEBUG_WS === '1';
@@ -19,7 +20,9 @@ const publicDir = path.resolve(__dirname, '..', 'public');
 // Inicialitzar WebSockets i la lògica del joc
 const ws = new webSockets();
 const game = new GameLogic();
+const gameMessages = new GameMessages(ws);
 let gameLoop = new GameLoop();
+let gameplayBroadcastIndex = 0;
 
 // Inicialitzar servidor Express
 const app = express();
@@ -75,8 +78,12 @@ ws.init(httpServer, port);
 ws.onConnection = (socket, id) => {
     if (debug) console.log("WebSocket client connected: " + id);
     game.addClient(id);
-    socket.send(JSON.stringify({ type: "initial", initialState: game.getInitialState() }));
-    socket.send(JSON.stringify({ type: "gameplay", gameState: game.getGameplayState() }));
+    gameMessages.addClient(id);
+    queueSnapshotToClient(socket, id, game.getSnapshotState());
+    queueGameplayStateToClient(socket, id, {
+      includeOtherPlayers: true,
+      includeGems: true
+    });
 };
 
 ws.onMessage = (socket, id, msg) => {
@@ -90,6 +97,7 @@ ws.onMessage = (socket, id, msg) => {
 ws.onClose = (socket, id) => {
     if (debug) console.log("WebSocket client disconnected: " + id);
     game.removeClient(id);
+    gameMessages.removeClient(id);
     ws.broadcast(JSON.stringify({ type: "disconnected", from: "server" }));
 };
 
@@ -97,6 +105,7 @@ ws.onClose = (socket, id) => {
 gameLoop.run = (fps) => {
     game.updateGame(fps);
     broadcastGameState();
+    gameMessages.flushAll();
 };
 gameLoop.start();
 
@@ -117,12 +126,43 @@ function shutDown() {
 }
 
 function broadcastGameState() {
-  // Send initial state only if there is a new one to send, otherwise just send the gameplay state
-  const initialState = game.consumeInitialState();
-  if (initialState) {
-    ws.broadcast(JSON.stringify({ type: 'initial', initialState }));
+  const snapshot = game.consumeSnapshotState();
+  const includeOtherPlayers = snapshot ? true : gameplayBroadcastIndex % 2 === 0;
+  const includeGems = snapshot ? true : !includeOtherPlayers;
+
+  if (snapshot) {
+    ws.forEachClient((socket, id) => {
+      queueSnapshotToClient(socket, id, snapshot);
+    });
   }
-  ws.broadcast(JSON.stringify({ type: 'gameplay', gameState: game.getGameplayState() }));
+
+  ws.forEachClient((socket, id) => {
+    queueGameplayStateToClient(socket, id, {
+      includeOtherPlayers,
+      includeGems
+    });
+  });
+
+  gameplayBroadcastIndex = (gameplayBroadcastIndex + 1) % 2;
+}
+
+function queueSnapshotToClient(socket, id, snapshot) {
+  gameMessages.enqueueReplaceable(
+    socket,
+    id,
+    'snapshot',
+    JSON.stringify({ type: 'snapshot', snapshot })
+  );
+}
+
+function queueGameplayStateToClient(socket, id, options) {
+  const gameState = game.getGameplayStateForPlayer(id, options);
+  gameMessages.enqueueReplaceable(
+    socket,
+    id,
+    'gameplay',
+    JSON.stringify({ type: 'gameplay', gameState })
+  );
 }
 
 function hasValidAdminSecret(req) {
