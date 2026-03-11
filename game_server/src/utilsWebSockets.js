@@ -55,11 +55,11 @@ class Obj {
     }
 
     // A websocket client connects
-    newConnection(con) {
-        console.log("Client connected");
-    
+    newConnection(con) {    
         // Generar ID únic per al client
         const id = "C" + uuidv4().substring(0, 5).toUpperCase();
+
+        console.log(`Client connected: ${id}`);
         const metadata = { id };
         this.socketsClients.set(con, metadata);
     
@@ -94,6 +94,7 @@ class Obj {
         if (this.onClose && typeof this.onClose === "function") {
             var id = this.socketsClients.get(con).id
             this.onClose(con, id)
+            console.log(`Client disconnected: ${id}`)
         }
     }
 
