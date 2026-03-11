@@ -9,7 +9,7 @@ const GameMessages = require('./utilsGameMessages.js');
 const GameLoop = require('./utilsGameLoop.js');
 
 loadEnvFiles([
-  path.resolve(__dirname, 'config.env')
+  path.resolve(__dirname, '.env')
 ]);
 
 const debug = process.env.DEBUG_WS === '1';

@@ -284,15 +284,15 @@ class GameLogic {
         }
     }
 
-    consumeInitialState() {
+    consumeSnapshotState() {
         if (!this.initialStateDirty) {
             return null;
         }
         this.initialStateDirty = false;
-        return this.getInitialState();
+        return this.getSnapshotState();
     }
 
-    getInitialState() {
+    getSnapshotState() {
         const players = Array.from(this.players.values()).sort(comparePlayers);
         return {
             level: LEVEL.levelName,
@@ -317,6 +317,45 @@ class GameLogic {
 
     getGameplayState() {
         const players = Array.from(this.players.values()).sort(comparePlayers);
+        return {
+            ...this.getGameplayStateBase(players),
+            players: players.map((player) => ({
+                ...this.serializeGameplayPlayer(player),
+            })),
+            gems: this.getVisibleGems(),
+        };
+    }
+
+    getGameplayStateForPlayer(playerId, options = {}) {
+        const includeOtherPlayers = options.includeOtherPlayers !== false;
+        const includeGems = options.includeGems !== false;
+        const players = Array.from(this.players.values()).sort(comparePlayers);
+        const selfPlayer = this.players.get(playerId);
+        const state = {
+            ...this.getGameplayStateBase(players),
+            selfPlayer: selfPlayer ? this.serializeGameplayPlayer(selfPlayer) : null,
+        };
+
+        if (includeOtherPlayers) {
+            state.otherPlayers = players
+                .filter((player) => player.id !== playerId)
+                .map((player) => this.serializeGameplayPlayer(player));
+        }
+        if (includeGems) {
+            state.gems = this.getVisibleGems();
+        }
+
+        return state;
+    }
+
+    getFullState() {
+        return {
+            ...this.getSnapshotState(),
+            ...this.getGameplayState()
+        };
+    }
+
+    getGameplayStateBase(players) {
         const countdownSeconds = this.phase === 'waiting' && this.lobbyEndsAt != null
             ? Math.max(0, Math.ceil((this.lobbyEndsAt - Date.now()) / 1000))
             : 0;
@@ -329,17 +368,6 @@ class GameLogic {
             remainingGems: this.gems.reduce((count, gem) => count + (gem.visible ? 1 : 0), 0),
             winnerId: winner ? winner.id : '',
             winnerName: winner ? winner.name : '',
-            players: players.map((player) => ({
-                id: player.id,
-                x: round2(player.x),
-                y: round2(player.y),
-                score: player.score,
-                gemsCollected: player.gemsCollected,
-                direction: player.direction,
-                facing: player.facing,
-                moving: player.moving,
-            })),
-            gemVisibility: this.gems.map((gem) => (gem.visible ? 1 : 0)),
             layerTransforms: this.layerRuntimeStates.map((layer, index) => ({
                 index,
                 x: round2(layer.x),
@@ -353,11 +381,31 @@ class GameLogic {
         };
     }
 
-    getFullState() {
+    serializeGameplayPlayer(player) {
         return {
-            ...this.getInitialState(),
-            ...this.getGameplayState()
+            id: player.id,
+            x: round2(player.x),
+            y: round2(player.y),
+            score: player.score,
+            gemsCollected: player.gemsCollected,
+            direction: player.direction,
+            facing: player.facing,
+            moving: player.moving,
         };
+    }
+
+    getVisibleGems() {
+        return this.gems
+            .filter((gem) => gem.visible)
+            .map((gem) => ({
+                id: gem.id,
+                type: gem.type,
+                x: round2(gem.x),
+                y: round2(gem.y),
+                width: gem.width,
+                height: gem.height,
+                value: gem.value
+            }));
     }
 
     startWaitingRoom() {
