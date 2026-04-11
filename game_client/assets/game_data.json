@@ -9,7 +9,89 @@
       "collapsed": false
     }
   ],
-  "mediaAssets": [],
+  "mediaAssets": [
+    {
+      "name": "background_japan",
+      "fileName": "media/Gemini_Generated_Image_e3klude3klude3kl.png",
+      "mediaType": "tileset",
+      "tileWidth": 2886,
+      "tileHeight": 1440,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "platforms",
+      "fileName": "media/Japanese_Wall_Set.png",
+      "mediaType": "tileset",
+      "tileWidth": 32,
+      "tileHeight": 32,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "idle",
+      "fileName": "media/idle_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 64,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "jump",
+      "fileName": "media/jump.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 66,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "hurt",
+      "fileName": "media/hurt.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 64,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "attack1",
+      "fileName": "media/attack1_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 96,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "attack2",
+      "fileName": "media/attack2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 94,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "attack3",
+      "fileName": "media/attack3.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 94,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "move",
+      "fileName": "media/move_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 65,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    }
+  ],
   "mediaGroups": [
     {
       "id": "__main__",
@@ -17,6 +99,11 @@
       "collapsed": false
     }
   ],
-  "zoneTypes": [],
+  "zoneTypes": [
+    {
+      "name": "Default",
+      "color": "blue"
+    }
+  ],
   "animationsFile": "animations/animations.json"
 }
