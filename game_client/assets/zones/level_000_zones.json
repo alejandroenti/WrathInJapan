@@ -8,6 +8,7 @@
   ],
   "zones": [
     {
+      "name": "death",
       "type": "death",
       "gameplayData": "",
       "x": 0,
@@ -18,6 +19,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "death",
       "type": "death",
       "gameplayData": "",
       "x": -100,
@@ -28,6 +30,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 450,
@@ -38,6 +41,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 313,
@@ -48,6 +52,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1308,
@@ -58,6 +63,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1662,
@@ -68,6 +74,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1626,
@@ -78,6 +85,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 2428,
@@ -88,6 +96,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 2154,
@@ -98,6 +107,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 510,
@@ -108,6 +118,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1089,
@@ -118,6 +129,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1916,
@@ -128,6 +140,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 509,
@@ -138,6 +151,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1021,
@@ -148,6 +162,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1892,
@@ -158,6 +173,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 2657,
@@ -168,6 +184,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1762,
@@ -178,6 +195,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1184,
@@ -188,6 +206,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1089,
@@ -198,6 +217,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1857,
@@ -208,6 +228,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1634,
@@ -218,6 +239,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1438,
@@ -228,6 +250,7 @@
       "groupId": "__main__"
     },
     {
+      "name": "platform",
       "type": "platform",
       "gameplayData": "",
       "x": 1311,

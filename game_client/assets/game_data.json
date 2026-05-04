@@ -10,8 +10,8 @@
         {
           "name": "platforms",
           "gameplayData": "",
-          "x": 0,
-          "y": 0,
+          "x": -70,
+          "y": -407,
           "depth": 0.0,
           "tilesSheetFile": "media/Japanese_Wall_Set.png",
           "tilesWidth": 32,
@@ -75,7 +75,8 @@
       "viewportPreviewColor": "amber",
       "backgroundColorHex": "#DCDCE1",
       "depthSensitivity": 0.08,
-      "zonesFile": "zones/level_000_zones.json"
+      "zonesFile": "zones/level_000_zones.json",
+      "pathsFile": "paths/level_000_paths.json"
     }
   ],
   "levelGroups": [
