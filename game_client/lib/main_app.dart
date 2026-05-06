@@ -16,7 +16,7 @@ class MainApp {
 
   static Future<void> main() async {
     WidgetsFlutterBinding.ensureInitialized();
-    await configureGameWindow('Game Example - Flutter');
+    await configureGameWindow('Wrath in Japan - The Game');
     runApp(const _GameRoot());
   }
 }
@@ -66,6 +66,76 @@ class _GameView extends StatefulWidget {
   State<_GameView> createState() => _GameViewState();
 }
 
+class _ScrollingBackground extends StatefulWidget {
+  const _ScrollingBackground();
+
+  @override
+  State<_ScrollingBackground> createState() => _ScrollingBackgroundState();
+}
+
+class _ScrollingBackgroundState extends State<_ScrollingBackground>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 20),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double width = constraints.maxWidth;
+        final double height = constraints.maxHeight;
+        return AnimatedBuilder(
+          animation: _controller,
+          builder: (BuildContext context, Widget? child) {
+            final double offset = -_controller.value * width;
+            return OverflowBox(
+              alignment: Alignment.centerLeft,
+              maxWidth: double.infinity,
+              child: Transform.translate(
+                offset: Offset(offset, 0),
+                child: Row(
+                  children: <Widget>[
+                    SizedBox(
+                      width: width,
+                      height: height,
+                      child: Image.asset(
+                        'assets/media/menu_background.png',
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    SizedBox(
+                      width: width,
+                      height: height,
+                      child: Image.asset(
+                        'assets/media/menu_background.png',
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
 class _ConfigurationScreen extends StatefulWidget {
   final ValueChanged<NetworkConfig> onStart;
 
@@ -76,10 +146,7 @@ class _ConfigurationScreen extends StatefulWidget {
 }
 
 class _ConfigurationScreenState extends State<_ConfigurationScreen> {
-  ServerOption _serverOption = NetworkConfig.defaults.serverOption;
-  final TextEditingController _playerNameController = TextEditingController(
-    text: NetworkConfig.defaults.playerName,
-  );
+  final TextEditingController _playerNameController = TextEditingController();
   String? _nameError;
 
   @override
@@ -92,7 +159,7 @@ class _ConfigurationScreenState extends State<_ConfigurationScreen> {
     final String playerName = _playerNameController.text.trim();
     if (playerName.isEmpty) {
       setState(() {
-        _nameError = 'Player name is required';
+        _nameError = 'El nombre es obligatorio';
       });
       return;
     }
@@ -101,86 +168,99 @@ class _ConfigurationScreenState extends State<_ConfigurationScreen> {
       _nameError = null;
     });
     widget.onStart(
-      NetworkConfig(serverOption: _serverOption, playerName: playerName),
+      NetworkConfig(
+        serverOption: NetworkConfig.defaults.serverOption,
+        playerName: playerName,
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        const _ScrollingBackground(),
+        Container(
+          color: Colors.black.withValues(alpha: 0.35),
+        ),
+        Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Text(
-                    'Game Configuration',
-                    style: theme.textTheme.headlineSmall,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Server',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
-                  SegmentedButton<ServerOption>(
-                    segments: const <ButtonSegment<ServerOption>>[
-                      ButtonSegment<ServerOption>(
-                        value: ServerOption.local,
-                        label: Text('Local'),
+                  Stack(
+                    alignment: Alignment.center,
+                    children: <Widget>[
+                      Text(
+                        'Wrath in Japan',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 56,
+                          fontWeight: FontWeight.bold,
+                          foreground: Paint()
+                            ..style = PaintingStyle.stroke
+                            ..strokeWidth = 6
+                            ..color = Colors.yellow,
+                        ),
                       ),
-                      ButtonSegment<ServerOption>(
-                        value: ServerOption.remote,
-                        label: Text('Remote'),
+                      Text(
+                        'Wrath in Japan',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 56,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red,
+                        ),
                       ),
                     ],
-                    selected: <ServerOption>{_serverOption},
-                    onSelectionChanged: (Set<ServerOption> selected) {
-                      if (selected.isEmpty) {
-                        return;
-                      }
-                      setState(() {
-                        _serverOption = selected.first;
-                      });
-                    },
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _serverOption == ServerOption.local
-                        ? 'ws://127.0.0.1:3000'
-                        : 'wss://${NetworkConfig.remoteServer}:443',
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 40),
                   TextField(
                     controller: _playerNameController,
+                    style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      labelText: 'Player name',
+                      labelText: 'Tu nombre',
+                      labelStyle: const TextStyle(color: Colors.white70),
                       errorText: _nameError,
+                      errorStyle: const TextStyle(
+                        color: Colors.orange,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
                       border: const OutlineInputBorder(),
+                      enabledBorder: const OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white54),
+                      ),
+                      focusedBorder: const OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
                     ),
                     textInputAction: TextInputAction.done,
                     onSubmitted: (_) => _startGame(),
+                    autofocus: true,
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                   ElevatedButton(
                     onPressed: _startGame,
-                    child: const Text('Start Game'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      side: const BorderSide(color: Colors.white38),
+                    ),
+                    child: const Text('Jugar', style: TextStyle(fontSize: 18)),
                   ),
                 ],
               ),
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
