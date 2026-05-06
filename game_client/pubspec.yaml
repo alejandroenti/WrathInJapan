@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   window_manager: ^0.5.1
   web_socket_channel: ^3.0.3
+  audioplayers: ^6.0.0
 
 dev_dependencies:
   flutter_test:
@@ -60,7 +61,16 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/audio/
     - assets/media/menu_background.png
+    - assets/media/waiting_background.png
+    - assets/media/controls.png
+    - assets/levels/game_data.json
+    - assets/levels/animations/
+    - assets/levels/media/
+    - assets/levels/paths/
+    - assets/levels/tilemaps/
+    - assets/levels/zones/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

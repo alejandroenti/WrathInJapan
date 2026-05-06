@@ -95,8 +95,16 @@ ws.onConnection = (socket, id) => {
 
 ws.onMessage = (socket, id, msg) => {
     if (debug) console.log(`New message from ${id}: ${msg.substring(0, 32)}...`);
-    const stateChanged = game.handleMessage(id, msg);
-    if (stateChanged) {
+    const result = game.handleMessage(id, msg);
+    if (result.rejection) {
+        ws.send(socket, JSON.stringify({ type: 'rejected', ...result.rejection }));
+        socket.close();
+        return;
+    }
+    if (result.registered) {
+        ws.send(socket, JSON.stringify({ type: 'registered', name: result.name }));
+    }
+    if (result.stateChanged) {
         broadcastGameState();
     }
 };

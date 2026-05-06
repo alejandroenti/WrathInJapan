@@ -33,8 +33,8 @@ class GameApp extends Game {
   ShapeRenderer? shapeRenderer;
   BitmapFont? font;
 
-  GameApp({required this.networkConfig})
-    : appData = AppData(initialConfig: networkConfig);
+  GameApp({required this.networkConfig, AppData? appData})
+    : appData = appData ?? AppData(initialConfig: networkConfig);
 
   Future<void> create() async {
     batch = SpriteBatch();

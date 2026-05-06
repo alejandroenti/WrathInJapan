@@ -154,7 +154,9 @@ class AppData extends ChangeNotifier {
 
   bool isConnected = false;
   bool isConnecting = false;
+  bool isRegistered = false;
   String? playerId;
+  String? rejectedName;
   MatchPhase phase = MatchPhase.connecting;
   String levelName = 'All together now';
   int countdownSeconds = 60;
@@ -254,6 +256,7 @@ class AppData extends ChangeNotifier {
     _wsHandler.disconnectFromServer();
     isConnected = false;
     isConnecting = false;
+    isRegistered = false;
     players = const <MultiplayerPlayer>[];
     gems = const <MultiplayerGem>[];
     _allGems = const <MultiplayerGem>[];
@@ -284,6 +287,7 @@ class AppData extends ChangeNotifier {
     _intentionalDisconnect = false;
     isConnecting = true;
     isConnected = false;
+    isRegistered = false;
     phase = MatchPhase.connecting;
     notifyListeners();
 
@@ -316,6 +320,18 @@ class AppData extends ChangeNotifier {
         return;
       }
 
+      if (type == 'snapshot') {
+        isConnected = true;
+        isConnecting = false;
+        _reconnectAttempts = 0;
+        final Object? rawSnapshot = data['snapshot'];
+        _applyInitialState(
+          rawSnapshot is Map ? _mapFromDynamic(rawSnapshot) : {},
+        );
+        notifyListeners();
+        return;
+      }
+
       if (type == 'initial') {
         isConnected = true;
         isConnecting = false;
@@ -333,10 +349,12 @@ class AppData extends ChangeNotifier {
         isConnecting = false;
         _reconnectAttempts = 0;
         final Object? rawGameState = data['gameState'];
-        _applyGameplayState(
+        final bool changed = _applyGameplayState(
           rawGameState is Map ? _mapFromDynamic(rawGameState) : {},
         );
-        notifyListeners();
+        if (changed) {
+          notifyListeners();
+        }
         return;
       }
 
@@ -350,6 +368,25 @@ class AppData extends ChangeNotifier {
         _applyInitialState(gameState);
         _applyGameplayState(gameState);
         notifyListeners();
+        return;
+      }
+
+      if (type == 'registered') {
+        isRegistered = true;
+        phase = MatchPhase.waiting;
+        notifyListeners();
+        return;
+      }
+
+      if (type == 'rejected') {
+        final String reason = (data['reason'] as String? ?? '').trim();
+        if (reason == 'name_taken' || reason == 'server_full') {
+          // Prevent the reconnect logic from firing when the server closes the socket.
+          _intentionalDisconnect = true;
+          rejectedName = (data['name'] as String? ?? networkConfig.playerName).trim();
+          notifyListeners();
+        }
+        return;
       }
     } catch (error) {
       if (kDebugMode) {
@@ -381,7 +418,12 @@ class AppData extends ChangeNotifier {
     _rebuildPlayers();
   }
 
-  void _applyGameplayState(Map<String, dynamic> state) {
+  bool _applyGameplayState(Map<String, dynamic> state) {
+    final MatchPhase prevPhase = phase;
+    final int prevCountdown = countdownSeconds;
+    final Set<String> prevPlayerIds = players.map((MultiplayerPlayer p) => p.id).toSet();
+    final int prevPlayerCount = players.length;
+
     levelName = (state['level'] as String? ?? levelName).trim();
     phase = _parsePhase(state['phase'] as String?);
     countdownSeconds = (state['countdownSeconds'] as num? ?? 0).toInt();
@@ -389,50 +431,83 @@ class AppData extends ChangeNotifier {
         (state['remainingGems'] as num? ?? state['gems']?.length ?? 0).toInt();
     winnerId = state['winnerId'] as String?;
 
-    final List<dynamic> rawPlayers = state['players'] as List<dynamic>? ?? [];
-    _playerDynamicById = <String, _PlayerDynamicData>{
-      for (final Map rawPlayer in rawPlayers.whereType<Map>())
-        (_mapFromDynamic(rawPlayer)['id'] as String? ?? '').trim():
-            _dynamicPlayerFromJson(_mapFromDynamic(rawPlayer)),
-    }..remove('');
+    // Before the match starts, skip dynamic game state (positions, gems, transforms).
+    // The waiting room only needs player names/join order (from snapshots) and countdown.
+    final bool isPreGame = phase == MatchPhase.connecting ||
+        phase == MatchPhase.rest ||
+        phase == MatchPhase.waiting;
 
-    if (state.containsKey('gems')) {
-      final List<dynamic> rawGems = state['gems'] as List<dynamic>? ?? [];
-      _allGems = rawGems
+    if (isPreGame) {
+      // Clear any leftover dynamic data from a previous match so _rebuildPlayers
+      // falls back to static data (names, join order) received via snapshots.
+      _playerDynamicById = const <String, _PlayerDynamicData>{};
+    } else {
+      // Server may send 'players' (getGameplayState) or 'selfPlayer'+'otherPlayers'
+      // (getGameplayStateForPlayer). Merge both formats.
+      final List<dynamic> rawPlayers = [
+        ...?(() {
+          final Object? p = state['players'];
+          return p is List ? p : null;
+        })(),
+        if (state['selfPlayer'] is Map) state['selfPlayer'] as Map,
+        ...?(() {
+          final Object? o = state['otherPlayers'];
+          return o is List ? o : null;
+        })(),
+      ];
+      _playerDynamicById = <String, _PlayerDynamicData>{
+        for (final Map rawPlayer in rawPlayers.whereType<Map>())
+          (_mapFromDynamic(rawPlayer)['id'] as String? ?? '').trim():
+              _dynamicPlayerFromJson(_mapFromDynamic(rawPlayer)),
+      }..remove('');
+
+      if (state.containsKey('gems')) {
+        final List<dynamic> rawGems = state['gems'] as List<dynamic>? ?? [];
+        _allGems = rawGems
+            .whereType<Map>()
+            .map((Map gem) => MultiplayerGem.fromJson(_mapFromDynamic(gem)))
+            .toList(growable: false);
+        _gemVisibility = List<int>.filled(_allGems.length, 1, growable: false);
+      }
+      if (state.containsKey('gemVisibility')) {
+        _gemVisibility = _normalizeGemVisibility(
+          state['gemVisibility'] as List<dynamic>?,
+          _allGems.length,
+        );
+      }
+
+      _rebuildVisibleGems();
+
+      final List<dynamic> rawLayerTransforms =
+          state['layerTransforms'] as List<dynamic>? ?? [];
+      layerTransforms = rawLayerTransforms
           .whereType<Map>()
-          .map((Map gem) => MultiplayerGem.fromJson(_mapFromDynamic(gem)))
+          .map(
+            (Map transform) =>
+                TransformSnapshot.fromJson(_mapFromDynamic(transform)),
+          )
           .toList(growable: false);
-      _gemVisibility = List<int>.filled(_allGems.length, 1, growable: false);
-    }
-    if (state.containsKey('gemVisibility')) {
-      _gemVisibility = _normalizeGemVisibility(
-        state['gemVisibility'] as List<dynamic>?,
-        _allGems.length,
-      );
+
+      final List<dynamic> rawZoneTransforms =
+          state['zoneTransforms'] as List<dynamic>? ?? [];
+      zoneTransforms = rawZoneTransforms
+          .whereType<Map>()
+          .map(
+            (Map transform) =>
+                TransformSnapshot.fromJson(_mapFromDynamic(transform)),
+          )
+          .toList(growable: false);
     }
 
     _rebuildPlayers();
-    _rebuildVisibleGems();
 
-    final List<dynamic> rawLayerTransforms =
-        state['layerTransforms'] as List<dynamic>? ?? [];
-    layerTransforms = rawLayerTransforms
-        .whereType<Map>()
-        .map(
-          (Map transform) =>
-              TransformSnapshot.fromJson(_mapFromDynamic(transform)),
-        )
-        .toList(growable: false);
-
-    final List<dynamic> rawZoneTransforms =
-        state['zoneTransforms'] as List<dynamic>? ?? [];
-    zoneTransforms = rawZoneTransforms
-        .whereType<Map>()
-        .map(
-          (Map transform) =>
-              TransformSnapshot.fromJson(_mapFromDynamic(transform)),
-        )
-        .toList(growable: false);
+    // Only report a change if something the UI actually displays has changed.
+    final bool playerListChanged =
+        players.length != prevPlayerCount ||
+        players.any((MultiplayerPlayer p) => !prevPlayerIds.contains(p.id));
+    return phase != prevPhase ||
+        countdownSeconds != prevCountdown ||
+        playerListChanged;
   }
 
   _PlayerStaticData _staticPlayerFromJson(Map<String, dynamic> json) {

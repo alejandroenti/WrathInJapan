@@ -181,12 +181,12 @@ class GameLogic {
         try {
             const obj = JSON.parse(msg);
             if (!obj || !obj.type) {
-                return false;
+                return { stateChanged: false };
             }
 
             const player = this.players.get(id);
             if (!player) {
-                return false;
+                return { stateChanged: false };
             }
 
             switch (obj.type) {
@@ -194,9 +194,15 @@ class GameLogic {
                 {
                     const nextName = sanitizePlayerName(obj.playerName, player.name);
                     if (nextName !== player.name) {
+                        const nameTaken = Array.from(this.players.entries()).some(
+                            ([otherId, other]) => otherId !== id && other.name.toLowerCase() === nextName.toLowerCase()
+                        );
+                        if (nameTaken) {
+                            return { stateChanged: false, rejection: { reason: 'name_taken', name: nextName } };
+                        }
                         player.name = nextName;
                         this.initialStateDirty = true;
-                        return true;
+                        return { stateChanged: true, registered: true, name: nextName };
                     }
                 }
                 break;
@@ -209,7 +215,7 @@ class GameLogic {
             case 'restartMatch':
                 if (this.phase === 'results') {
                     this.restartToWaitingRoom();
-                    return true;
+                    return { stateChanged: true };
                 }
                 break;
             default:
@@ -217,7 +223,7 @@ class GameLogic {
             }
         } catch (_) {
         }
-        return false;
+        return { stateChanged: false };
     }
 
     updateGame(fps) {

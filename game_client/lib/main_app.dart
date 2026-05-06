@@ -4,11 +4,13 @@ import 'package:flutter/services.dart';
 import 'dart:math' as math;
 
 import 'app_data.dart';
+import 'bg_music.dart';
 import 'game_app.dart';
 import 'libgdx_compat/gdx.dart';
 import 'level_loader.dart';
 import 'network_config.dart';
 import 'play_screen.dart';
+import 'waiting_room_view.dart';
 import 'window_config.dart';
 
 class MainApp {
@@ -29,12 +31,88 @@ class _GameRoot extends StatefulWidget {
 }
 
 class _GameRootState extends State<_GameRoot> {
-  NetworkConfig? _networkConfig;
+  AppData? _pendingAppData;
+  GameApp? _gameApp;
+  bool _isConnecting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    BgMusic.instance.play();
+  }
+
+  @override
+  void dispose() {
+    _pendingAppData?.removeListener(_onPendingAppDataChanged);
+    _pendingAppData?.dispose();
+    BgMusic.instance.disposePlayer();
+    super.dispose();
+  }
 
   void _handleStartGame(NetworkConfig config) {
+    final AppData appData = AppData(initialConfig: config);
+    appData.addListener(_onPendingAppDataChanged);
     setState(() {
-      _networkConfig = config;
+      _pendingAppData = appData;
+      _isConnecting = true;
     });
+  }
+
+  void _cancelConnection() {
+    _pendingAppData?.removeListener(_onPendingAppDataChanged);
+    _pendingAppData?.dispose();
+    setState(() {
+      _pendingAppData = null;
+      _isConnecting = false;
+    });
+  }
+
+  void _onPendingAppDataChanged() {
+    final AppData? appData = _pendingAppData;
+    if (appData == null) return;
+
+    if (appData.isRegistered) {
+      final GameApp gameApp = GameApp(
+        networkConfig: appData.networkConfig,
+        appData: appData,
+      );
+      appData.removeListener(_onPendingAppDataChanged);
+      setState(() {
+        _pendingAppData = null;
+        _isConnecting = false;
+        _gameApp = gameApp;
+      });
+      return;
+    }
+
+    if (appData.rejectedName != null) {
+      final String name = appData.rejectedName!;
+      appData.rejectedName = null;
+      appData.removeListener(_onPendingAppDataChanged);
+      appData.dispose();
+      setState(() {
+        _pendingAppData = null;
+        _isConnecting = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        showDialog<void>(
+          context: context,
+          builder: (BuildContext ctx) => AlertDialog(
+            title: const Text('Nombre en uso'),
+            content: Text(
+              'El nombre "$name" ya está siendo usado por otro jugador. Por favor, elige otro nombre.',
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Aceptar'),
+              ),
+            ],
+          ),
+        );
+      });
+    }
   }
 
   @override
@@ -48,9 +126,16 @@ class _GameRootState extends State<_GameRoot> {
       ),
       home: Scaffold(
         body: SafeArea(
-          child: _networkConfig == null
-              ? _ConfigurationScreen(onStart: _handleStartGame)
-              : _GameView(networkConfig: _networkConfig!),
+          child: _gameApp == null
+              ? _ConfigurationScreen(
+                  onStart: _handleStartGame,
+                  isConnecting: _isConnecting,
+                  onCancel: _cancelConnection,
+                )
+              : _GameView(
+                  game: _gameApp!,
+                  onBack: () => setState(() => _gameApp = null),
+                ),
         ),
       ),
     );
@@ -58,9 +143,10 @@ class _GameRootState extends State<_GameRoot> {
 }
 
 class _GameView extends StatefulWidget {
-  final NetworkConfig networkConfig;
+  final GameApp game;
+  final VoidCallback onBack;
 
-  const _GameView({required this.networkConfig});
+  const _GameView({required this.game, required this.onBack});
 
   @override
   State<_GameView> createState() => _GameViewState();
@@ -138,8 +224,14 @@ class _ScrollingBackgroundState extends State<_ScrollingBackground>
 
 class _ConfigurationScreen extends StatefulWidget {
   final ValueChanged<NetworkConfig> onStart;
+  final bool isConnecting;
+  final VoidCallback onCancel;
 
-  const _ConfigurationScreen({required this.onStart});
+  const _ConfigurationScreen({
+    required this.onStart,
+    required this.isConnecting,
+    required this.onCancel,
+  });
 
   @override
   State<_ConfigurationScreen> createState() => _ConfigurationScreenState();
@@ -156,6 +248,7 @@ class _ConfigurationScreenState extends State<_ConfigurationScreen> {
   }
 
   void _startGame() {
+    if (widget.isConnecting) return;
     final String playerName = _playerNameController.text.trim();
     if (playerName.isEmpty) {
       setState(() {
@@ -222,6 +315,7 @@ class _ConfigurationScreenState extends State<_ConfigurationScreen> {
                   const SizedBox(height: 40),
                   TextField(
                     controller: _playerNameController,
+                    enabled: !widget.isConnecting,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       labelText: 'Tu nombre',
@@ -245,16 +339,50 @@ class _ConfigurationScreenState extends State<_ConfigurationScreen> {
                     autofocus: true,
                   ),
                   const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _startGame,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black54,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: const BorderSide(color: Colors.white38),
+                  if (widget.isConnecting) ...<Widget>[
+                    ElevatedButton(
+                      onPressed: widget.onCancel,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black54,
+                        foregroundColor: Colors.white70,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: const BorderSide(color: Colors.white24),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white70,
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Text('Conectando...', style: TextStyle(fontSize: 18)),
+                        ],
+                      ),
                     ),
-                    child: const Text('Jugar', style: TextStyle(fontSize: 18)),
-                  ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: widget.onCancel,
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.white60,
+                      ),
+                      child: const Text('Cancelar'),
+                    ),
+                  ] else
+                    ElevatedButton(
+                      onPressed: _startGame,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black54,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: const BorderSide(color: Colors.white38),
+                      ),
+                      child: const Text('Jugar', style: TextStyle(fontSize: 18)),
+                    ),
                 ],
               ),
             ),
@@ -277,6 +405,7 @@ class _GameViewState extends State<_GameView>
   Duration? _lastTick;
   double _delta = 1 / 60;
   bool _ready = false;
+  OverlayEntry? _waitingRoomEntry;
   Size _surfaceSize = Size.zero;
   double _scale = 1;
   double _offsetX = 0;
@@ -288,12 +417,17 @@ class _GameViewState extends State<_GameView>
   @override
   void initState() {
     super.initState();
-    _game = GameApp(networkConfig: widget.networkConfig);
+    _game = widget.game;
+    _game.getAppData().addListener(_onAppDataChanged);
     _initialize();
   }
 
   Future<void> _initialize() async {
-    await LevelLoader.initialize();
+    try {
+      await LevelLoader.initialize();
+    } catch (_) {
+      // Level assets not found; game canvas will use fallback level data.
+    }
     await _game.create();
     _ticker = createTicker((Duration elapsed) {
       if (_lastTick == null) {
@@ -314,15 +448,43 @@ class _GameViewState extends State<_GameView>
         _ready = true;
       });
       _focusNode.requestFocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _insertWaitingRoomOverlay();
+        }
+      });
     }
+  }
+
+  void _insertWaitingRoomOverlay() {
+    final AppData appData = _game.getAppData();
+    _waitingRoomEntry = OverlayEntry(
+      builder: (BuildContext ctx) {
+        final bool show = appData.phase == MatchPhase.waiting;
+        if (!show) return const SizedBox.shrink();
+        return WaitingRoomView(appData: appData);
+      },
+    );
+    Overlay.of(context).insert(_waitingRoomEntry!);
   }
 
   @override
   void dispose() {
+    _game.getAppData().removeListener(_onAppDataChanged);
     _ticker?.dispose();
     _focusNode.dispose();
+    _waitingRoomEntry?.remove();
+    _waitingRoomEntry = null;
     _game.dispose();
     super.dispose();
+  }
+
+  void _onAppDataChanged() {
+    _waitingRoomEntry?.markNeedsBuild();
+    final AppData appData = _game.getAppData();
+    if (appData.phase == MatchPhase.playing) {
+      BgMusic.instance.stop();
+    }
   }
 
   KeyEventResult _onKeyEvent(KeyEvent event) {
@@ -416,10 +578,18 @@ class _GameViewState extends State<_GameView>
   @override
   Widget build(BuildContext context) {
     if (!_ready) {
-      return const ColoredBox(color: Colors.black);
+      return ListenableBuilder(
+        listenable: _game.getAppData(),
+        builder: (BuildContext context, Widget? _) {
+          return WaitingRoomView(appData: _game.getAppData());
+        },
+      );
     }
 
     final AppData appData = _game.getAppData();
+    // Fallback: show inline while overlay isn't inserted yet (single frame)
+    final bool showWaitingRoom = _waitingRoomEntry == null &&
+        appData.phase == MatchPhase.waiting;
     final bool showRestartOverlay =
         _game.getScreen() is PlayScreen &&
         (appData.phase == MatchPhase.finished || appData.phase == MatchPhase.results);
@@ -525,6 +695,10 @@ class _GameViewState extends State<_GameView>
                     size: Size.infinite,
                   ),
                 ),
+                if (showWaitingRoom)
+                  Positioned.fill(
+                    child: WaitingRoomView(appData: appData),
+                  ),
                 if (showRestartOverlay)
                   Positioned(
                     left: restartButtonLeft,
