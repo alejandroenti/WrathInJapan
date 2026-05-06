@@ -69,58 +69,58 @@ app.post('/api/admin/restart-match', (req, res) => {
 
 // Inicialitzar servidor HTTP
 const httpServer = app.listen(port, () => {
-    console.log(`Servidor HTTP escoltant a: http://localhost:${port}`);
+  console.log(`Servidor HTTP escoltant a: http://localhost:${port}`);
 });
 
 // Gestionar WebSockets
 ws.init(httpServer, port);
 
 ws.onConnection = (socket, id) => {
-    if (debug) console.log("WebSocket client connected: " + id);
-    const player = game.addClient(id);
-    if (!player) {
-        // Server is full: notify the client and close the connection
-        ws.send(socket, JSON.stringify({ type: 'rejected', reason: 'server_full' }));
-        socket.close();
-        console.log(`Connection rejected (server full): ${id}`);
-        return;
-    }
-    gameMessages.addClient(id);
-    queueSnapshotToClient(socket, id, game.getSnapshotState());
-    queueGameplayStateToClient(socket, id, {
-      includeOtherPlayers: true,
-      includeGems: true
-    });
+  if (debug) console.log("WebSocket client connected: " + id);
+  const player = game.addClient(id);
+  if (!player) {
+    // Server is full: notify the client and close the connection
+    ws.send(socket, JSON.stringify({ type: 'rejected', reason: 'server_full' }));
+    socket.close();
+    console.log(`Connection rejected (server full): ${id}`);
+    return;
+  }
+  gameMessages.addClient(id);
+  queueSnapshotToClient(socket, id, game.getSnapshotState());
+  queueGameplayStateToClient(socket, id, {
+    includeOtherPlayers: true,
+    includeGems: true
+  });
 };
 
 ws.onMessage = (socket, id, msg) => {
-    if (debug) console.log(`New message from ${id}: ${msg.substring(0, 32)}...`);
-    const result = game.handleMessage(id, msg);
-    if (result.rejection) {
-        ws.send(socket, JSON.stringify({ type: 'rejected', ...result.rejection }));
-        socket.close();
-        return;
-    }
-    if (result.registered) {
-        ws.send(socket, JSON.stringify({ type: 'registered', name: result.name }));
-    }
-    if (result.stateChanged) {
-        broadcastGameState();
-    }
+  if (debug) console.log(`New message from ${id}: ${msg.substring(0, 32)}...`);
+  const result = game.handleMessage(id, msg);
+  if (result.rejection) {
+    ws.send(socket, JSON.stringify({ type: 'rejected', ...result.rejection }));
+    socket.close();
+    return;
+  }
+  if (result.registered) {
+    ws.send(socket, JSON.stringify({ type: 'registered', name: result.name }));
+  }
+  if (result.stateChanged) {
+    broadcastGameState();
+  }
 };
 
 ws.onClose = (socket, id) => {
-    if (debug) console.log("WebSocket client disconnected: " + id);
-    game.removeClient(id);
-    gameMessages.removeClient(id);
-    ws.broadcast(JSON.stringify({ type: "disconnected", from: "server" }));
+  if (debug) console.log("WebSocket client disconnected: " + id);
+  game.removeClient(id);
+  gameMessages.removeClient(id);
+  ws.broadcast(JSON.stringify({ type: "disconnected", from: "server" }));
 };
 
 // **Game Loop**
 gameLoop.run = (fps) => {
-    game.updateGame(fps);
-    broadcastGameState();
-    gameMessages.flushAll();
+  game.updateGame(fps);
+  broadcastGameState();
+  gameMessages.flushAll();
 };
 gameLoop.start();
 
@@ -142,8 +142,9 @@ function shutDown() {
 
 function broadcastGameState() {
   const snapshot = game.consumeSnapshotState();
-  const includeOtherPlayers = snapshot ? true : gameplayBroadcastIndex % 2 === 0;
-  const includeGems = snapshot ? true : !includeOtherPlayers;
+  // Always include other players to prevent flickering
+  const includeOtherPlayers = true;
+  const includeGems = snapshot ? true : gameplayBroadcastIndex % 2 === 0;
 
   if (snapshot) {
     ws.forEachClient((socket, id) => {

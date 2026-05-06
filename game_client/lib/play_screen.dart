@@ -23,8 +23,11 @@ class PlayScreen extends ScreenAdapter {
   static const double leaderboardRowHeight = 24;
   static const double leaderboardStartY = 92;
   static const double maxFrameSeconds = 0.25;
-  static const double remotePlayerOpacity = 0.5;
+  static const double remotePlayerOpacity = 1.0;
   static const double localPlayerRingPadding = 6;
+  static const double playerNameTextScale = 0.8;
+  static const double healthBarHeight = 4.0;
+  static const double healthBarPadding = 2.0;
 
   static final ui.Color panelFill = colorValueOf('09140CCC');
   static final ui.Color panelStroke = colorValueOf('35FF74');
@@ -40,6 +43,9 @@ class PlayScreen extends ScreenAdapter {
   final LevelRenderer levelRenderer = LevelRenderer();
   final DebugOverlay debugOverlay = DebugOverlay();
   final GlyphLayout layout = GlyphLayout();
+  // Global scale applied to level viewport to make the map appear smaller
+  // relative to sprite sizes. Values > 1 enlarge world units (map smaller).
+  final double worldScale = 0.55;
 
   late final LevelData levelData;
   late final Viewport viewport;
@@ -186,9 +192,11 @@ class PlayScreen extends ScreenAdapter {
         flipX: frame.flipX,
       );
       if (isLocalPlayer) {
+        final double left = player.x - player.width * frame.anchorX;
+        final double top = player.y - player.height * frame.anchorY;
         final ui.Rect dst = viewport.worldToScreenRect(
-          player.x,
-          player.y,
+          left,
+          top,
           player.width,
           player.height,
         );
@@ -198,10 +206,94 @@ class PlayScreen extends ScreenAdapter {
         );
         _localPlayerHighlightRadius =
             math.max(dst.width, dst.height) * 0.5 + localPlayerRingPadding;
+      } else {
+        // Draw opponent name and health bar above
+        _drawPlayerLabel(batch, player, frame);
       }
     }
     if (usingRemotePlayerOpacity) {
       batch.setColor(previousBatchColor);
+    }
+  }
+
+  void _drawPlayerLabel(
+    SpriteBatch batch,
+    MultiplayerPlayer player,
+    _AnimatedSpriteFrame frame,
+  ) {
+    // Convert world position to screen and draw name + health bar above
+    final double left = player.x - player.width * frame.anchorX;
+    final double top = player.y - player.height * frame.anchorY;
+    final ui.Rect worldRect = viewport.worldToScreenRect(
+      left,
+      top,
+      player.width,
+      player.height,
+    );
+
+    // Position name and bar above the character
+    final double nameScreenY = worldRect.top - 18;
+    final double barScreenY = nameScreenY - 8;
+    final double barCenterX = worldRect.left + worldRect.width * 0.5;
+
+    // Draw name
+    final BitmapFont font = game.getFont();
+    font.getData().setScale(playerNameTextScale);
+    font.setColor(textColor);
+    layout.setText(font, player.name);
+    final double nameX = barCenterX - layout.width * 0.5;
+    font.draw(batch, layout, nameX, nameScreenY);
+    font.getData().setScale(1);
+
+    // Draw health bar using heal_bar sprite
+    final LevelSprite? healBarTemplate = gemTemplateByType['heal_bar'];
+    if (healBarTemplate != null) {
+      final AssetManager assets = game.getAssetManager();
+      if (assets.isLoaded(healBarTemplate.texturePath, Texture)) {
+        final double healthPercent = math.max(0, (100 - player.damage) / 100);
+        final double barWidth = 40.0;
+        final double barLeft = barCenterX - barWidth * 0.5;
+
+        // Draw health bar tiles (2 tiles max for full health)
+        final int tilesVisible = math.max(1, (healthPercent * 2).round());
+        final double tileScreenWidth = barWidth / 2.0; // ~20px per tile
+
+        final Texture texture = assets.get(
+          healBarTemplate.texturePath,
+          Texture,
+        );
+
+        for (int i = 0; i < 2; i++) {
+          // Set color based on whether this tile should show health or damage
+          if (i < tilesVisible) {
+            // Health bar - full color
+            batch.setColor(0.2, 1.0, 0.2, 1.0); // Green tint for health
+          } else {
+            // Damage bar - faded
+            batch.setColor(1.0, 0.2, 0.2, 0.4); // Red tint for damage, faded
+          }
+
+          final ui.Rect dst = ui.Rect.fromLTWH(
+            barLeft + i * tileScreenWidth,
+            barScreenY,
+            tileScreenWidth,
+            healthBarHeight,
+          );
+
+          // Draw the full texture tile
+          final ui.Rect src = ui.Rect.fromLTWH(
+            0,
+            0,
+            healBarTemplate.width,
+            healBarTemplate.height,
+          );
+
+          batch.drawRegion(texture, src, dst);
+        }
+
+        // Reset color
+        batch.setColor(1.0, 1.0, 1.0, 1.0);
+      }
     }
   }
 
@@ -234,13 +326,11 @@ class PlayScreen extends ScreenAdapter {
     if (!assets.isLoaded(frame.texturePath, Texture)) {
       return;
     }
+    // Convert anchor-based world position to top-left for rendering consistency.
+    final double left = worldX - width * frame.anchorX;
+    final double top = worldY - height * frame.anchorY;
 
-    final ui.Rect dst = viewport.worldToScreenRect(
-      worldX,
-      worldY,
-      width,
-      height,
-    );
+    final ui.Rect dst = viewport.worldToScreenRect(left, top, width, height);
     final Texture texture = assets.get(frame.texturePath, Texture);
     final ui.Rect src = _frameSourceRect(
       texture,
@@ -389,17 +479,20 @@ class PlayScreen extends ScreenAdapter {
 
   void _sendJumpAndAttackInputs(AppData appData) {
     if (!appData.canMove) return;
+    // Jump with space or up arrow (w removed for attack)
     if (Gdx.input.isKeyJustPressed(Input.keys.space) ||
-        Gdx.input.isKeyJustPressed(Input.keys.up) ||
-        Gdx.input.isKeyJustPressed(Input.keys.w)) {
+        Gdx.input.isKeyJustPressed(Input.keys.up)) {
       appData.sendJump();
     }
-    if (Gdx.input.isKeyJustPressed(Input.keys.z)) {
+    // Attacks: w = attack1, z = attack2, x = attack3, c = attack1
+    if (Gdx.input.isKeyJustPressed(Input.keys.w)) {
       appData.sendAttack(1);
-    } else if (Gdx.input.isKeyJustPressed(Input.keys.x)) {
+    } else if (Gdx.input.isKeyJustPressed(Input.keys.z)) {
       appData.sendAttack(2);
-    } else if (Gdx.input.isKeyJustPressed(Input.keys.c)) {
+    } else if (Gdx.input.isKeyJustPressed(Input.keys.x)) {
       appData.sendAttack(3);
+    } else if (Gdx.input.isKeyJustPressed(Input.keys.c)) {
+      appData.sendAttack(1);
     }
   }
 
@@ -462,21 +555,21 @@ class PlayScreen extends ScreenAdapter {
     switch (data.viewportAdaptation) {
       case 'expand':
         return ExtendViewport(
-          data.viewportWidth,
-          data.viewportHeight,
+          data.viewportWidth * worldScale,
+          data.viewportHeight * worldScale,
           targetCamera,
         );
       case 'stretch':
         return StretchViewport(
-          data.viewportWidth,
-          data.viewportHeight,
+          data.viewportWidth * worldScale,
+          data.viewportHeight * worldScale,
           targetCamera,
         );
       case 'letterbox':
       default:
         return FitViewport(
-          data.viewportWidth,
-          data.viewportHeight,
+          data.viewportWidth * worldScale,
+          data.viewportHeight * worldScale,
           targetCamera,
         );
     }
@@ -576,6 +669,27 @@ class PlayScreen extends ScreenAdapter {
         templates['blue'] = sprite;
       }
     }
+
+    // Create heal_bar template programmatically if not found
+    if (!templates.containsKey('heal_bar')) {
+      templates['heal_bar'] = LevelSprite(
+        'heal_bar',
+        'heal_bar',
+        0,
+        0,
+        0,
+        20,
+        20,
+        0.5,
+        0.5,
+        false,
+        false,
+        0,
+        'levels/media/heal_bar_2.png',
+        null,
+      );
+    }
+
     return templates;
   }
 
@@ -595,7 +709,11 @@ class PlayScreen extends ScreenAdapter {
       animationName = 'idle';
     }
 
-    return _frameFromTemplate(playerTemplate, animationName: animationName, flipX: flipX);
+    return _frameFromTemplate(
+      playerTemplate,
+      animationName: animationName,
+      flipX: flipX,
+    );
   }
 
   _AnimatedSpriteFrame _frameFromTemplate(

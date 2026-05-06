@@ -43,14 +43,16 @@ const HURT_DURATION_S = 0.35;
 const INVINCIBLE_DURATION_S = 1.8;
 
 const DIRECTIONS = {
-    left:  { dx: -1, dy: 0, facing: 'left' },
-    right: { dx:  1, dy: 0, facing: 'right' },
-    none:  { dx:  0, dy: 0, facing: 'none' }
+    left: { dx: -1, dy: 0, facing: 'left' },
+    right: { dx: 1, dy: 0, facing: 'right' },
+    none: { dx: 0, dy: 0, facing: 'none' }
 };
 
 const LEVEL = loadMultiplayerLevel();
 const PLAYER_TEMPLATE = findPlayerTemplate(LEVEL.sprites);
 const GEM_TEMPLATE_BY_TYPE = buildGemTemplateMap(LEVEL.sprites);
+// Chance (per spawn slot) to turn a gem into a heal powerup (0.0 - 1.0)
+const HEAL_POWERUP_PROBABILITY = 0.05;
 
 class GameLogic {
     constructor() {
@@ -145,6 +147,9 @@ class GameLogic {
             flipX: false,
             flipY: false
         };
+        // stats
+        player.score = 0;
+        player.gemsCollected = 0;
         this.players.set(id, player);
         this.initialStateDirty = true;
 
@@ -188,49 +193,49 @@ class GameLogic {
             }
 
             switch (obj.type) {
-            case 'register':
-                {
-                    const nextName = sanitizePlayerName(obj.playerName, player.name);
-                    if (nextName !== player.name) {
-                        const nameTaken = Array.from(this.players.entries()).some(
-                            ([otherId, other]) => otherId !== id && other.name.toLowerCase() === nextName.toLowerCase()
-                        );
-                        if (nameTaken) {
-                            return { stateChanged: false, rejection: { reason: 'name_taken', name: nextName } };
+                case 'register':
+                    {
+                        const nextName = sanitizePlayerName(obj.playerName, player.name);
+                        if (nextName !== player.name) {
+                            const nameTaken = Array.from(this.players.entries()).some(
+                                ([otherId, other]) => otherId !== id && other.name.toLowerCase() === nextName.toLowerCase()
+                            );
+                            if (nameTaken) {
+                                return { stateChanged: false, rejection: { reason: 'name_taken', name: nextName } };
+                            }
+                            player.name = nextName;
+                            this.initialStateDirty = true;
+                            return { stateChanged: true, registered: true, name: nextName };
                         }
-                        player.name = nextName;
-                        this.initialStateDirty = true;
-                        return { stateChanged: true, registered: true, name: nextName };
                     }
-                }
-                break;
-            case 'direction':
-                player.direction = normalizeDirection(obj.value);
-                if (player.direction !== 'none') {
-                    player.facing = DIRECTIONS[player.direction].facing;
-                }
-                break;
-            case 'jump':
-                if (this.phase === 'playing') {
-                    player.jumpPressedThisTick = true;
-                }
-                break;
-            case 'attack':
-                if (this.phase === 'playing' && !player.attacking && player.hurtTimer <= 0 && player.stocks > 0) {
-                    const variant = Math.max(1, Math.min(3, Number(obj.variant) || 1));
-                    player.attacking = true;
-                    player.attackVariant = variant;
-                    player.attackTimer = ATTACK_DURATION_S;
-                }
-                break;
-            case 'restartMatch':
-                if (this.phase === 'results') {
-                    this.restartToWaitingRoom();
-                    return { stateChanged: true };
-                }
-                break;
-            default:
-                break;
+                    break;
+                case 'direction':
+                    player.direction = normalizeDirection(obj.value);
+                    if (player.direction !== 'none') {
+                        player.facing = DIRECTIONS[player.direction].facing;
+                    }
+                    break;
+                case 'jump':
+                    if (this.phase === 'playing') {
+                        player.jumpPressedThisTick = true;
+                    }
+                    break;
+                case 'attack':
+                    if (this.phase === 'playing' && !player.attacking && player.hurtTimer <= 0 && player.stocks > 0) {
+                        const variant = Math.max(1, Math.min(3, Number(obj.variant) || 1));
+                        player.attacking = true;
+                        player.attackVariant = variant;
+                        player.attackTimer = ATTACK_DURATION_S;
+                    }
+                    break;
+                case 'restartMatch':
+                    if (this.phase === 'results') {
+                        this.restartToWaitingRoom();
+                        return { stateChanged: true };
+                    }
+                    break;
+                default:
+                    break;
             }
         } catch (_) {
         }
@@ -387,6 +392,12 @@ class GameLogic {
             player.moving = Math.abs(player.velocityX) > MOVEMENT_DIRECTION_THRESHOLD && player.grounded;
             player.animationId = this.resolveSmashAnimationId(player);
             player.frameIndex = resolveAnimationFrame(player.animationId, this.tickCounter / safeFps);
+            // Check for gem collection after movement/animation updated
+            try {
+                this.collectTouchedGems(player);
+            } catch (ex) {
+                // ignore
+            }
         }
 
         // Win condition: only 1 (or 0) active players remaining
@@ -502,6 +513,7 @@ class GameLogic {
 
     getGameplayStateForPlayer(playerId, options = {}) {
         const includeOtherPlayers = options.includeOtherPlayers !== false;
+        const includeGems = options.includeGems === true;
         const players = Array.from(this.players.values()).sort(comparePlayers);
         const selfPlayer = this.players.get(playerId);
         const state = {
@@ -514,7 +526,16 @@ class GameLogic {
                 .filter((player) => player.id !== playerId)
                 .map((player) => this.serializeGameplayPlayer(player));
         }
-        state.gems = [];
+        state.gems = includeGems ? this.gems.map((g) => ({
+            id: g.id,
+            type: g.type,
+            x: round2(g.x),
+            y: round2(g.y),
+            width: g.width,
+            height: g.height,
+            value: g.value,
+            visible: !!g.visible
+        })) : [];
 
         return state;
     }
@@ -596,6 +617,12 @@ class GameLogic {
         this.lobbyEndsAt = null;
         this.resetEnvironmentRuntime();
         this.positionPlayersForStart();
+        // Spawn gems (and occasional heal powerups) when the match starts
+        try {
+            this.spawnGems();
+        } catch (ex) {
+            // ignore spawn errors
+        }
     }
 
     finishMatch() {
@@ -987,8 +1014,19 @@ class GameLogic {
                 this.playerCollisionRect(player),
                 this.gemCollisionRect(gem)
             )) {
-                player.score += gem.value;
-                player.gemsCollected += 1;
+                const t = String(gem.type || '').toLowerCase();
+                if (t.includes('heal') || t.includes('heal_powerup')) {
+                    // Full heal: reset damage and restore stocks
+                    player.damage = 0;
+                    player.stocks = MAX_STOCKS;
+                    player.hurtTimer = 0;
+                    player.invincibleTimer = INVINCIBLE_DURATION_S;
+                    // count as collected for stats
+                    player.gemsCollected += 1;
+                } else {
+                    player.score += gem.value;
+                    player.gemsCollected += 1;
+                }
                 gem.visible = false;
             }
         }
@@ -1007,8 +1045,12 @@ class GameLogic {
             }
         });
 
+        // Optionally replace some spawn slots with heal powerups
         for (let i = 0; i < spawnQueue.length && i < shuffledCells.length; i++) {
-            const type = spawnQueue[i];
+            let type = spawnQueue[i];
+            if (Math.random() < HEAL_POWERUP_PROBABILITY) {
+                type = 'heal_powerup';
+            }
             const cell = shuffledCells[i];
             this.gems.push({
                 id: `G${String(this.nextGemId++).padStart(3, '0')}`,
