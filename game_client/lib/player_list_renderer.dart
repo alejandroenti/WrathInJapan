@@ -93,7 +93,7 @@ class PlayerListRenderer {
       drawRightAlignedText(
         batch,
         font,
-        '${player.score}',
+        '${'\u2665' * player.stocks} ${player.damage}%',
         right,
         rowY,
         metrics.textScale,

@@ -90,6 +90,7 @@ class PlayScreen extends ScreenAdapter {
     }
 
     _submitDirection(appData, _readCurrentDirection());
+    _sendJumpAndAttackInputs(appData);
     _applyServerLayerTransforms(appData.layerTransforms);
     _applyServerZoneTransforms(appData.zoneTransforms);
     _updateCameraForGameplay(appData.localPlayer);
@@ -296,7 +297,7 @@ class PlayScreen extends ScreenAdapter {
     _drawLeftAlignedText(
       batch,
       font,
-      'Leaderboard',
+      'Wrath in Japan',
       screenWidth - leaderboardWidth + leaderboardPadding,
       34,
       1.45,
@@ -305,7 +306,7 @@ class PlayScreen extends ScreenAdapter {
     _drawLeftAlignedText(
       batch,
       font,
-      'Remaining gems: ${appData.remainingGems}',
+      'Players alive: ${appData.sortedPlayers.where((p) => p.stocks > 0).length}',
       screenWidth - leaderboardWidth + leaderboardPadding,
       64,
       1.0,
@@ -357,7 +358,10 @@ class PlayScreen extends ScreenAdapter {
         : appData.sortedPlayers.first;
     final String title = winner == null
         ? 'Match Finished'
-        : '${winner.name} wins with ${winner.score}';
+        : '${winner.name} wins!';
+    final String subtitle = winner == null
+        ? ''
+        : '${winner.stocks} stock${winner.stocks == 1 ? '' : 's'} remaining · ${winner.damage}% damage';
 
     final SpriteBatch batch = game.getBatch();
     final BitmapFont font = game.getFont();
@@ -374,13 +378,29 @@ class PlayScreen extends ScreenAdapter {
     _drawCenteredText(
       batch,
       font,
-      'All gems were collected.',
+      subtitle,
       screenHeight * 0.53,
       1.15,
       textColor,
       maxWidth: screenWidth - leaderboardWidth,
     );
     batch.end();
+  }
+
+  void _sendJumpAndAttackInputs(AppData appData) {
+    if (!appData.canMove) return;
+    if (Gdx.input.isKeyJustPressed(Input.keys.space) ||
+        Gdx.input.isKeyJustPressed(Input.keys.up) ||
+        Gdx.input.isKeyJustPressed(Input.keys.w)) {
+      appData.sendJump();
+    }
+    if (Gdx.input.isKeyJustPressed(Input.keys.z)) {
+      appData.sendAttack(1);
+    } else if (Gdx.input.isKeyJustPressed(Input.keys.x)) {
+      appData.sendAttack(2);
+    } else if (Gdx.input.isKeyJustPressed(Input.keys.c)) {
+      appData.sendAttack(3);
+    }
   }
 
   void _submitDirection(AppData appData, String direction) {
@@ -398,37 +418,9 @@ class PlayScreen extends ScreenAdapter {
     final bool right =
         Gdx.input.isKeyPressed(Input.keys.right) ||
         Gdx.input.isKeyPressed(Input.keys.d);
-    final bool up =
-        Gdx.input.isKeyPressed(Input.keys.up) ||
-        Gdx.input.isKeyPressed(Input.keys.w);
-    final bool down =
-        Gdx.input.isKeyPressed(Input.keys.down) ||
-        Gdx.input.isKeyPressed(Input.keys.s);
 
-    if (up && left) {
-      return 'upLeft';
-    }
-    if (up && right) {
-      return 'upRight';
-    }
-    if (down && left) {
-      return 'downLeft';
-    }
-    if (down && right) {
-      return 'downRight';
-    }
-    if (up) {
-      return 'up';
-    }
-    if (down) {
-      return 'down';
-    }
-    if (left) {
-      return 'left';
-    }
-    if (right) {
-      return 'right';
-    }
+    if (left) return 'left';
+    if (right) return 'right';
     return 'none';
   }
 
@@ -588,59 +580,22 @@ class PlayScreen extends ScreenAdapter {
   }
 
   _AnimatedSpriteFrame _playerFrameFor(MultiplayerPlayer player) {
-    final String facing = player.facing;
-    final bool moving = player.moving;
-    bool flipX = false;
-    String animationName;
+    final bool flipX = player.flipX || player.facing == 'left';
+    final String animationName;
 
-    switch (facing) {
-      case 'left':
-        animationName = moving
-            ? 'Character  Walk Right'
-            : 'Character Idle Right';
-        flipX = true;
-        break;
-      case 'upLeft':
-        animationName = moving
-            ? 'Character  Walk Up-Right'
-            : 'Character Idle Up-Right';
-        flipX = true;
-        break;
-      case 'downLeft':
-        animationName = moving
-            ? 'Character  Walk Down-Right'
-            : 'Character Idle Down-Right';
-        flipX = true;
-        break;
-      case 'right':
-        animationName = moving
-            ? 'Character  Walk Right'
-            : 'Character Idle Right';
-        break;
-      case 'upRight':
-        animationName = moving
-            ? 'Character  Walk Up-Right'
-            : 'Character Idle Up-Right';
-        break;
-      case 'up':
-        animationName = moving ? 'Character  Walk Up' : 'Character Idle Up';
-        break;
-      case 'downRight':
-        animationName = moving
-            ? 'Character  Walk Down-Right'
-            : 'Character Idle Down-Right';
-        break;
-      case 'down':
-      default:
-        animationName = moving ? 'Character  Walk Down' : 'Character Idle Down';
-        break;
+    if (player.hurtTimer > 0) {
+      animationName = 'hurt';
+    } else if (player.attacking) {
+      animationName = 'attack${player.attackVariant}';
+    } else if (!player.grounded) {
+      animationName = 'jump';
+    } else if (player.moving) {
+      animationName = 'move';
+    } else {
+      animationName = 'idle';
     }
 
-    return _frameFromTemplate(
-      playerTemplate,
-      animationName: animationName,
-      flipX: flipX,
-    );
+    return _frameFromTemplate(playerTemplate, animationName: animationName, flipX: flipX);
   }
 
   _AnimatedSpriteFrame _frameFromTemplate(

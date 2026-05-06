@@ -109,6 +109,9 @@ class KeysData {
   final int a = 29;
   final int s = 47;
   final int d = 32;
+  final int z = 54;
+  final int x = 52;
+  final int c = 31;
   final int enter = 66;
   final int space = 62;
   final int escape = 111;
@@ -169,6 +172,15 @@ int? logicalKeyToGdxKey(LogicalKeyboardKey key) {
   }
   if (key == LogicalKeyboardKey.keyR) {
     return Input.keys.r;
+  }
+  if (key == LogicalKeyboardKey.keyZ) {
+    return Input.keys.z;
+  }
+  if (key == LogicalKeyboardKey.keyX) {
+    return Input.keys.x;
+  }
+  if (key == LogicalKeyboardKey.keyC) {
+    return Input.keys.c;
   }
   return null;
 }

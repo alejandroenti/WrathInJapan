@@ -14,49 +14,38 @@ const PLAYER_WIDTH = 20;
 const PLAYER_HEIGHT = 20;
 const PLAYER_START_X = 32;
 const PLAYER_START_Y = 32;
-const PLAYER_START_STEP_X = 32;
-const PLAYER_START_STEP_Y = 32;
-const GEM_WIDTH = 15;
-const GEM_HEIGHT = 15;
+const PLAYER_START_STEP_X = 100;
+const PLAYER_START_STEP_Y = 0;
 
-const MOVE_SPEED_PER_SECOND = 95;
-const DIAGONAL_NORMALIZE = 0.70710677;
-const NORMAL_ACCELERATION_PER_SECOND = 900;
-const NORMAL_DECELERATION_PER_SECOND = 1200;
-const ICE_ACCELERATION_PER_SECOND = 230;
-const ICE_DECELERATION_PER_SECOND = 75;
-const SAND_SPEED_MULTIPLIER = 0.48;
+// Horizontal movement
+const MOVE_SPEED_PER_SECOND = 260;
+const NORMAL_ACCELERATION_PER_SECOND = 1400;
+const NORMAL_DECELERATION_PER_SECOND = 1600;
+const HORIZONTAL_AIR_FACTOR = 0.75;
 const MOVEMENT_DIRECTION_THRESHOLD = 2;
 const VELOCITY_STOP_THRESHOLD = 0.5;
-const MAX_COLLISION_SLIDE_ITERATIONS = 4;
-const COLLISION_SWEEP_ITERATIONS = 12;
-const COLLISION_TIME_BACKOFF = 0.001;
-const COLLISION_PROBE_SPACING = 1.0;
 const MOVEMENT_EPSILON = 0.0001;
 
-const GEM_COUNTS = {
-    blue: 500,
-    green: 250,
-    yellow: 100,
-    purple: 50
-};
-const GEM_VALUES = {
-    blue: 1,
-    green: 2,
-    yellow: 3,
-    purple: 5
-};
+// Platform physics
+const GRAVITY_PER_SECOND = 1300;
+const MAX_FALL_SPEED = 950;
+const JUMP_VELOCITY = -700;
+const MAX_JUMPS = 2;
+
+// Combat
+const MAX_STOCKS = 3;
+const ATTACK_DAMAGE = 8;
+const KNOCK_BASE_SPEED = 240;
+const KNOCK_DAMAGE_SCALE = 4.5;
+const KNOCK_UP_RATIO = 0.55;
+const ATTACK_DURATION_S = 0.45;
+const HURT_DURATION_S = 0.35;
+const INVINCIBLE_DURATION_S = 1.8;
 
 const DIRECTIONS = {
-    up: { dx: 0, dy: -1, facing: 'up' },
-    upLeft: { dx: -DIAGONAL_NORMALIZE, dy: -DIAGONAL_NORMALIZE, facing: 'upLeft' },
-    left: { dx: -1, dy: 0, facing: 'left' },
-    downLeft: { dx: -DIAGONAL_NORMALIZE, dy: DIAGONAL_NORMALIZE, facing: 'downLeft' },
-    down: { dx: 0, dy: 1, facing: 'down' },
-    downRight: { dx: DIAGONAL_NORMALIZE, dy: DIAGONAL_NORMALIZE, facing: 'downRight' },
-    right: { dx: 1, dy: 0, facing: 'right' },
-    upRight: { dx: DIAGONAL_NORMALIZE, dy: -DIAGONAL_NORMALIZE, facing: 'upRight' },
-    none: { dx: 0, dy: 0, facing: 'down' }
+    left:  { dx: -1, dy: 0, facing: 'left' },
+    right: { dx:  1, dy: 0, facing: 'right' },
+    none:  { dx:  0, dy: 0, facing: 'none' }
 };
 
 const LEVEL = loadMultiplayerLevel();
@@ -118,8 +107,8 @@ class GameLogic {
             .filter(Boolean);
 
         this.wallZoneIndices = classifyZoneIndices(['mur', 'wall'], LEVEL.zones);
-        this.iceZoneIndices = classifyZoneIndices(['ice', 'gel', 'hielo'], LEVEL.zones);
-        this.sandZoneIndices = classifyZoneIndices(['sand', 'sorra', 'arena'], LEVEL.zones);
+        this.platformZoneIndices = classifyZoneIndices(['platform'], LEVEL.zones);
+        this.deathZoneIndices = classifyZoneIndices(['death', 'mort', 'muerte'], LEVEL.zones);
     }
 
     addClient(id) {
@@ -127,6 +116,7 @@ class GameLogic {
             return null;
         }
         const spawn = this.getSpawnPosition(this.players.size);
+        const idleAnimId = resolveAnimationIdByName('idle') || (PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '');
         const player = {
             id,
             name: `Player ${this.players.size + 1}`,
@@ -135,15 +125,23 @@ class GameLogic {
             width: PLAYER_WIDTH,
             height: PLAYER_HEIGHT,
             direction: 'none',
-            facing: 'down',
+            facing: 'right',
             moving: false,
+            grounded: false,
+            jumpCount: 0,
+            jumpPressedThisTick: false,
+            attacking: false,
+            attackVariant: 1,
+            attackTimer: 0,
+            hurtTimer: 0,
+            invincibleTimer: 0,
+            damage: 0,
+            stocks: MAX_STOCKS,
             joinOrder: this.nextJoinOrder++,
-            score: 0,
-            gemsCollected: 0,
             velocityX: 0,
             velocityY: 0,
-            animationId: PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '',
-            frameIndex: PLAYER_TEMPLATE ? resolveClipStartFrame(PLAYER_TEMPLATE.animationId) : 0,
+            animationId: idleAnimId,
+            frameIndex: resolveClipStartFrame(idleAnimId),
             flipX: false,
             flipY: false
         };
@@ -212,6 +210,19 @@ class GameLogic {
                     player.facing = DIRECTIONS[player.direction].facing;
                 }
                 break;
+            case 'jump':
+                if (this.phase === 'playing') {
+                    player.jumpPressedThisTick = true;
+                }
+                break;
+            case 'attack':
+                if (this.phase === 'playing' && !player.attacking && player.hurtTimer <= 0 && player.stocks > 0) {
+                    const variant = Math.max(1, Math.min(3, Number(obj.variant) || 1));
+                    player.attacking = true;
+                    player.attackVariant = variant;
+                    player.attackTimer = ATTACK_DURATION_S;
+                }
+                break;
             case 'restartMatch':
                 if (this.phase === 'results') {
                     this.restartToWaitingRoom();
@@ -256,58 +267,203 @@ class GameLogic {
         }
 
         for (const player of this.players.values()) {
-            this.applyMovingWallCarry(player);
-            this.resolveWallPenetration(player);
+            if (player.stocks <= 0) {
+                continue;
+            }
 
-            const direction = DIRECTIONS[player.direction] || DIRECTIONS.none;
-            const onIce = this.playerOverlapsAnyZone(player, this.iceZoneIndices);
-            const onSand = this.playerOverlapsAnyZone(player, this.sandZoneIndices);
-            const speedMultiplier = onSand ? SAND_SPEED_MULTIPLIER : 1;
-            const targetVelocityX = direction.dx * MOVE_SPEED_PER_SECOND * speedMultiplier;
-            const targetVelocityY = direction.dy * MOVE_SPEED_PER_SECOND * speedMultiplier;
-            const hasInput = player.direction !== 'none';
-            const acceleration = onIce
-                ? ICE_ACCELERATION_PER_SECOND
-                : NORMAL_ACCELERATION_PER_SECOND;
-            const deceleration = onIce
-                ? ICE_DECELERATION_PER_SECOND
-                : NORMAL_DECELERATION_PER_SECOND;
-            const maxVelocityDelta = (hasInput ? acceleration : deceleration) * dtSeconds;
+            // Tick timers
+            player.attackTimer = Math.max(0, player.attackTimer - dtSeconds);
+            player.hurtTimer = Math.max(0, player.hurtTimer - dtSeconds);
+            player.invincibleTimer = Math.max(0, player.invincibleTimer - dtSeconds);
+            if (player.attackTimer <= 0) {
+                player.attacking = false;
+            }
 
-            player.velocityX = approach(player.velocityX, targetVelocityX, maxVelocityDelta);
-            player.velocityY = approach(player.velocityY, targetVelocityY, maxVelocityDelta);
+            // Gravity
+            player.velocityY = Math.min(player.velocityY + GRAVITY_PER_SECOND * dtSeconds, MAX_FALL_SPEED);
+
+            // Jump
+            if (player.jumpPressedThisTick) {
+                player.jumpPressedThisTick = false;
+                if (player.jumpCount < MAX_JUMPS) {
+                    player.velocityY = JUMP_VELOCITY;
+                    player.jumpCount++;
+                    player.grounded = false;
+                }
+            }
+
+            // Horizontal input (reduced control while hurt/knocked back)
+            if (player.hurtTimer <= 0) {
+                const direction = DIRECTIONS[player.direction] || DIRECTIONS.none;
+                const airFactor = player.grounded ? 1 : HORIZONTAL_AIR_FACTOR;
+                const targetVX = direction.dx * MOVE_SPEED_PER_SECOND * airFactor;
+                const hasInput = direction.dx !== 0;
+                const maxDelta = (hasInput ? NORMAL_ACCELERATION_PER_SECOND : NORMAL_DECELERATION_PER_SECOND) * dtSeconds;
+                player.velocityX = approach(player.velocityX, targetVX, maxDelta);
+            } else {
+                // Decelerate knockback
+                player.velocityX = approach(player.velocityX, 0, 350 * dtSeconds);
+            }
             if (Math.abs(player.velocityX) < VELOCITY_STOP_THRESHOLD) {
                 player.velocityX = 0;
             }
-            if (Math.abs(player.velocityY) < VELOCITY_STOP_THRESHOLD) {
-                player.velocityY = 0;
+
+            // Facing from horizontal velocity
+            if (player.velocityX < -MOVEMENT_DIRECTION_THRESHOLD) {
+                player.facing = 'left';
+                player.flipX = true;
+            } else if (player.velocityX > MOVEMENT_DIRECTION_THRESHOLD) {
+                player.facing = 'right';
+                player.flipX = false;
             }
 
-            const movingLeft = player.velocityX < -MOVEMENT_DIRECTION_THRESHOLD;
-            const movingRight = player.velocityX > MOVEMENT_DIRECTION_THRESHOLD;
-            const movingUp = player.velocityY < -MOVEMENT_DIRECTION_THRESHOLD;
-            const movingDown = player.velocityY > MOVEMENT_DIRECTION_THRESHOLD;
-            player.facing = resolveFacing(player.facing, movingUp, movingDown, movingLeft, movingRight);
-            player.flipX = shouldFlipX(player.facing);
-            player.animationId = resolvePlayerAnimationId(player.facing, player.moving);
+            // Move horizontally (world boundary clamp only)
+            player.x = clamp(
+                player.x + player.velocityX * dtSeconds,
+                0,
+                Math.max(0, LEVEL.worldWidth - player.width)
+            );
+
+            // Move vertically with one-way platform landing
+            const prevBottom = player.y + player.height;
+            player.y += player.velocityY * dtSeconds;
+            const newBottom = player.y + player.height;
+            player.grounded = false;
+
+            if (player.velocityY >= 0) {
+                for (const zi of this.platformZoneIndices) {
+                    const zone = this.zoneRectAtIndex(zi);
+                    if (player.x + player.width <= zone.left || player.x >= zone.right) {
+                        continue;
+                    }
+                    if (prevBottom <= zone.top + 1 && newBottom >= zone.top) {
+                        player.y = zone.top - player.height;
+                        player.velocityY = 0;
+                        player.grounded = true;
+                        player.jumpCount = 0;
+                        break;
+                    }
+                }
+            }
+
+            // Top boundary
+            if (player.y < 0) {
+                player.y = 0;
+                if (player.velocityY < 0) {
+                    player.velocityY = 0;
+                }
+            }
+
+            // Ground probe: are we standing on a platform?
+            if (!player.grounded) {
+                const probeBottom = player.y + player.height + 2;
+                for (const zi of this.platformZoneIndices) {
+                    const zone = this.zoneRectAtIndex(zi);
+                    if (player.x + player.width <= zone.left || player.x >= zone.right) {
+                        continue;
+                    }
+                    if (probeBottom >= zone.top && player.y + player.height <= zone.top + 3) {
+                        player.grounded = true;
+                        player.jumpCount = 0;
+                        break;
+                    }
+                }
+            }
+
+            // Death zone
+            if (this.playerOverlapsAnyZone(player, this.deathZoneIndices)) {
+                player.stocks = Math.max(0, player.stocks - 1);
+                if (player.stocks > 0) {
+                    this.respawnPlayer(player);
+                }
+            }
+
+            // Attack hit detection
+            if (player.attacking) {
+                this.checkAttackHits(player);
+            }
+
+            // Animation & movement flag
+            player.moving = Math.abs(player.velocityX) > MOVEMENT_DIRECTION_THRESHOLD && player.grounded;
+            player.animationId = this.resolveSmashAnimationId(player);
             player.frameIndex = resolveAnimationFrame(player.animationId, this.tickCounter / safeFps);
-
-            const previousX = player.x;
-            const previousY = player.y;
-            const dx = player.velocityX * dtSeconds;
-            const dy = player.velocityY * dtSeconds;
-            this.movePlayerWithWallCollisions(player, previousX, previousY, dx, dy);
-            this.collectTouchedGems(player);
-
-            const hasDirectionalVelocity =
-                Math.abs(player.velocityX) > MOVEMENT_DIRECTION_THRESHOLD ||
-                Math.abs(player.velocityY) > MOVEMENT_DIRECTION_THRESHOLD;
-            player.moving = hasInput && hasDirectionalVelocity;
         }
 
-        if (this.gems.every((gem) => !gem.visible)) {
+        // Win condition: only 1 (or 0) active players remaining
+        const activePlayers = Array.from(this.players.values()).filter((p) => p.stocks > 0);
+        if (this.players.size >= 2 && activePlayers.length <= 1) {
             this.finishMatch();
         }
+    }
+
+    checkAttackHits(attacker) {
+        const clip = LEVEL.animationClips.get(attacker.animationId);
+        const hitBoxes = activeHitBoxesForClip(clip, attacker.frameIndex);
+        if (!hitBoxes || hitBoxes.length === 0) {
+            return;
+        }
+        const attackRects = hitBoxes.map((hb) =>
+            hitBoxRectAt(attacker.x, attacker.y, attacker.width, attacker.height, hb, attacker.flipX, attacker.flipY)
+        );
+        for (const other of this.players.values()) {
+            if (other.id === attacker.id || other.stocks <= 0 || other.invincibleTimer > 0) {
+                continue;
+            }
+            const otherRect = rectAt(other.x, other.y, other.width, other.height);
+            let hit = false;
+            for (const ar of attackRects) {
+                if (rectsOverlap(ar, otherRect)) {
+                    hit = true;
+                    break;
+                }
+            }
+            if (!hit) {
+                continue;
+            }
+            other.damage = Math.min(999, other.damage + ATTACK_DAMAGE);
+            const knockSpeed = KNOCK_BASE_SPEED + other.damage * KNOCK_DAMAGE_SCALE;
+            const dirX = attacker.flipX ? -1 : 1;
+            other.velocityX = dirX * knockSpeed;
+            other.velocityY = -knockSpeed * KNOCK_UP_RATIO;
+            other.hurtTimer = HURT_DURATION_S;
+            other.invincibleTimer = INVINCIBLE_DURATION_S;
+            other.grounded = false;
+        }
+    }
+
+    resolveSmashAnimationId(player) {
+        if (player.hurtTimer > 0) {
+            return resolveAnimationIdByName('hurt') || (PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '');
+        }
+        if (player.attacking) {
+            return resolveAnimationIdByName(`attack${player.attackVariant}`) || (PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '');
+        }
+        if (!player.grounded) {
+            return resolveAnimationIdByName('jump') || (PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '');
+        }
+        if (player.moving) {
+            return resolveAnimationIdByName('move') || (PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '');
+        }
+        return resolveAnimationIdByName('idle') || (PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '');
+    }
+
+    respawnPlayer(player) {
+        const spawn = this.getSpawnPosition(player.joinOrder % MAX_PLAYERS);
+        player.x = spawn.x;
+        player.y = spawn.y;
+        player.direction = 'none';
+        player.velocityX = 0;
+        player.velocityY = 0;
+        player.grounded = false;
+        player.jumpCount = 0;
+        player.attacking = false;
+        player.attackTimer = 0;
+        player.hurtTimer = 0;
+        player.invincibleTimer = INVINCIBLE_DURATION_S;
+        player.damage = 0;
+        const idleAnimId = resolveAnimationIdByName('idle') || (PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '');
+        player.animationId = idleAnimId;
+        player.frameIndex = resolveClipStartFrame(idleAnimId);
     }
 
     consumeSnapshotState() {
@@ -329,15 +485,7 @@ class GameLogic {
                 height: player.height,
                 joinOrder: player.joinOrder
             })),
-            gems: this.gems.map((gem) => ({
-                id: gem.id,
-                type: gem.type,
-                x: round2(gem.x),
-                y: round2(gem.y),
-                width: gem.width,
-                height: gem.height,
-                value: gem.value
-            }))
+            gems: []
         };
     }
 
@@ -348,13 +496,12 @@ class GameLogic {
             players: players.map((player) => ({
                 ...this.serializeGameplayPlayer(player),
             })),
-            gems: this.getVisibleGems(),
+            gems: [],
         };
     }
 
     getGameplayStateForPlayer(playerId, options = {}) {
         const includeOtherPlayers = options.includeOtherPlayers !== false;
-        const includeGems = options.includeGems !== false;
         const players = Array.from(this.players.values()).sort(comparePlayers);
         const selfPlayer = this.players.get(playerId);
         const state = {
@@ -367,9 +514,7 @@ class GameLogic {
                 .filter((player) => player.id !== playerId)
                 .map((player) => this.serializeGameplayPlayer(player));
         }
-        if (includeGems) {
-            state.gems = this.getVisibleGems();
-        }
+        state.gems = [];
 
         return state;
     }
@@ -395,7 +540,7 @@ class GameLogic {
             phase: this.phase,
             countdownSeconds,
             resultsSeconds,
-            remainingGems: this.gems.reduce((count, gem) => count + (gem.visible ? 1 : 0), 0),
+            remainingGems: 0,
             winnerId: winner ? winner.id : '',
             winnerName: winner ? winner.name : '',
             layerTransforms: this.layerRuntimeStates.map((layer, index) => ({
@@ -416,36 +561,26 @@ class GameLogic {
             id: player.id,
             x: round2(player.x),
             y: round2(player.y),
-            score: player.score,
-            gemsCollected: player.gemsCollected,
+            damage: player.damage,
+            stocks: player.stocks,
             direction: player.direction,
             facing: player.facing,
             moving: player.moving,
+            grounded: player.grounded,
+            attacking: player.attacking,
+            attackVariant: player.attackVariant,
+            hurtTimer: round2(player.hurtTimer),
+            flipX: player.flipX,
         };
-    }
-
-    getVisibleGems() {
-        return this.gems
-            .filter((gem) => gem.visible)
-            .map((gem) => ({
-                id: gem.id,
-                type: gem.type,
-                x: round2(gem.x),
-                y: round2(gem.y),
-                width: gem.width,
-                height: gem.height,
-                value: gem.value
-            }));
     }
 
     startWaitingRoom() {
         this.phase = 'waiting';
         this.winnerId = '';
-        this.lobbyEndsAt = null; // Countdown starts only when >=2 players are present
+        this.lobbyEndsAt = null;
         this.resultsEndsAt = null;
         this.initialStateDirty = true;
         this.resetEnvironmentRuntime();
-        this.spawnGems();
         this.positionPlayersForStart();
     }
 
@@ -485,7 +620,6 @@ class GameLogic {
         this.resultsEndsAt = null;
         this.winnerId = '';
         this.gems = [];
-        this.nextGemId = 0;
         this.initialStateDirty = true;
         this.resetEnvironmentRuntime();
         console.log('Server back to REST — waiting for players.');
@@ -565,33 +699,37 @@ class GameLogic {
         player.x = spawn.x;
         player.y = spawn.y;
         player.direction = 'none';
-        player.facing = 'down';
+        player.facing = 'right';
         player.moving = false;
+        player.grounded = false;
+        player.jumpCount = 0;
+        player.jumpPressedThisTick = false;
+        player.attacking = false;
+        player.attackVariant = 1;
+        player.attackTimer = 0;
+        player.hurtTimer = 0;
+        player.invincibleTimer = 0;
+        player.damage = 0;
+        player.stocks = MAX_STOCKS;
         player.velocityX = 0;
         player.velocityY = 0;
-        player.score = 0;
-        player.gemsCollected = 0;
-        player.animationId = PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '';
-        player.frameIndex = PLAYER_TEMPLATE ? resolveClipStartFrame(PLAYER_TEMPLATE.animationId) : 0;
         player.flipX = false;
         player.flipY = false;
-        this.resolveWallPenetration(player);
+        const idleAnimId = resolveAnimationIdByName('idle') || (PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '');
+        player.animationId = idleAnimId;
+        player.frameIndex = resolveClipStartFrame(idleAnimId);
     }
 
     getSpawnPosition(index) {
-        const maxRows = Math.max(
-            1,
-            Math.floor((LEVEL.worldHeight - PLAYER_START_Y - PLAYER_HEIGHT) / PLAYER_START_STEP_Y) + 1
-        );
-        const maxColumns = Math.max(
-            1,
-            Math.floor((LEVEL.worldWidth * 0.25 - PLAYER_START_X - PLAYER_WIDTH) / PLAYER_START_STEP_X) + 1
-        );
-        const row = index % maxRows;
-        const column = Math.floor(index / maxRows) % maxColumns;
+        if (LEVEL.spawnPoints && LEVEL.spawnPoints.length > 0) {
+            return LEVEL.spawnPoints[index % LEVEL.spawnPoints.length];
+        }
+        const baseX = PLAYER_TEMPLATE ? PLAYER_TEMPLATE.x : PLAYER_START_X;
+        const baseY = PLAYER_TEMPLATE ? PLAYER_TEMPLATE.y : PLAYER_START_Y;
+        const col = index % MAX_PLAYERS;
         return {
-            x: PLAYER_START_X + column * PLAYER_START_STEP_X,
-            y: PLAYER_START_Y + row * PLAYER_START_STEP_Y
+            x: baseX + col * PLAYER_START_STEP_X,
+            y: baseY
         };
     }
 
@@ -1096,12 +1234,10 @@ function resolveFacing(previousFacing, up, down, left, right) {
 }
 
 function comparePlayers(a, b) {
-    if (b.score !== a.score) {
-        return b.score - a.score;
-    }
-    if (b.gemsCollected !== a.gemsCollected) {
-        return b.gemsCollected - a.gemsCollected;
-    }
+    // More stocks = better rank
+    if (b.stocks !== a.stocks) return b.stocks - a.stocks;
+    // Less damage = better rank
+    if (a.damage !== b.damage) return a.damage - b.damage;
     return a.joinOrder - b.joinOrder;
 }
 
@@ -1117,8 +1253,8 @@ function findPlayerTemplate(sprites) {
     for (const sprite of sprites) {
         const type = normalize(sprite.type);
         const name = normalize(sprite.name);
-        if (containsAny(type, ['player', 'hero', 'heroi', 'foxy']) ||
-            containsAny(name, ['player', 'hero', 'heroi', 'foxy'])) {
+        if (containsAny(type, ['player', 'hero', 'heroi', 'foxy', 'character']) ||
+            containsAny(name, ['player', 'hero', 'heroi', 'foxy', 'character'])) {
             return sprite;
         }
     }
@@ -1142,40 +1278,14 @@ function buildGemTemplateMap(sprites) {
     return map;
 }
 
-function resolvePlayerAnimationId(facing, moving) {
-    const animationName = resolvePlayerAnimationName(facing, moving);
+function resolveAnimationIdByName(name) {
+    const normalized = normalize(name);
     for (const clip of LEVEL.animationClips.values()) {
-        if (normalize(clip.name) === normalize(animationName)) {
+        if (normalize(clip.name) === normalized) {
             return clip.id;
         }
     }
-    return PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '';
-}
-
-function resolvePlayerAnimationName(facing, moving) {
-    switch (facing) {
-    case 'left':
-        return moving ? 'Character  Walk Right' : 'Character Idle Right';
-    case 'upLeft':
-        return moving ? 'Character  Walk Up-Right' : 'Character Idle Up-Right';
-    case 'downLeft':
-        return moving ? 'Character  Walk Down-Right' : 'Character Idle Down-Right';
-    case 'right':
-        return moving ? 'Character  Walk Right' : 'Character Idle Right';
-    case 'upRight':
-        return moving ? 'Character  Walk Up-Right' : 'Character Idle Up-Right';
-    case 'up':
-        return moving ? 'Character  Walk Up' : 'Character Idle Up';
-    case 'downRight':
-        return moving ? 'Character  Walk Down-Right' : 'Character Idle Down-Right';
-    case 'down':
-    default:
-        return moving ? 'Character  Walk Down' : 'Character Idle Down';
-    }
-}
-
-function shouldFlipX(facing) {
-    return facing === 'left' || facing === 'upLeft' || facing === 'downLeft';
+    return null;
 }
 
 function resolveAnimationFrame(animationId, elapsedSeconds) {

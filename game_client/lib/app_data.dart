@@ -14,11 +14,16 @@ class MultiplayerPlayer {
   final double y;
   final double width;
   final double height;
-  final int score;
-  final int gemsCollected;
+  final int damage;
+  final int stocks;
   final String direction;
   final String facing;
   final bool moving;
+  final bool grounded;
+  final bool attacking;
+  final int attackVariant;
+  final double hurtTimer;
+  final bool flipX;
   final int joinOrder;
 
   const MultiplayerPlayer({
@@ -28,11 +33,16 @@ class MultiplayerPlayer {
     required this.y,
     required this.width,
     required this.height,
-    required this.score,
-    required this.gemsCollected,
+    required this.damage,
+    required this.stocks,
     required this.direction,
     required this.facing,
     required this.moving,
+    required this.grounded,
+    required this.attacking,
+    required this.attackVariant,
+    required this.hurtTimer,
+    required this.flipX,
     required this.joinOrder,
   });
 
@@ -44,11 +54,16 @@ class MultiplayerPlayer {
       y: (json['y'] as num? ?? 0).toDouble(),
       width: (json['width'] as num? ?? 20).toDouble(),
       height: (json['height'] as num? ?? 20).toDouble(),
-      score: (json['score'] as num? ?? 0).toInt(),
-      gemsCollected: (json['gemsCollected'] as num? ?? 0).toInt(),
+      damage: (json['damage'] as num? ?? 0).toInt(),
+      stocks: (json['stocks'] as num? ?? 3).toInt(),
       direction: (json['direction'] as String? ?? 'none').trim(),
-      facing: (json['facing'] as String? ?? 'down').trim(),
+      facing: (json['facing'] as String? ?? 'right').trim(),
       moving: json['moving'] as bool? ?? false,
+      grounded: json['grounded'] as bool? ?? false,
+      attacking: json['attacking'] as bool? ?? false,
+      attackVariant: (json['attackVariant'] as num? ?? 1).toInt(),
+      hurtTimer: (json['hurtTimer'] as num? ?? 0).toDouble(),
+      flipX: json['flipX'] as bool? ?? false,
       joinOrder: (json['joinOrder'] as num? ?? 0).toInt(),
     );
   }
@@ -126,21 +141,31 @@ class _PlayerDynamicData {
   final String id;
   final double x;
   final double y;
-  final int score;
-  final int gemsCollected;
+  final int damage;
+  final int stocks;
   final String direction;
   final String facing;
   final bool moving;
+  final bool grounded;
+  final bool attacking;
+  final int attackVariant;
+  final double hurtTimer;
+  final bool flipX;
 
   const _PlayerDynamicData({
     required this.id,
     required this.x,
     required this.y,
-    required this.score,
-    required this.gemsCollected,
+    required this.damage,
+    required this.stocks,
     required this.direction,
     required this.facing,
     required this.moving,
+    required this.grounded,
+    required this.attacking,
+    required this.attackVariant,
+    required this.hurtTimer,
+    required this.flipX,
   });
 }
 
@@ -202,19 +227,13 @@ class AppData extends ChangeNotifier {
       players,
     );
     sorted.sort((MultiplayerPlayer a, MultiplayerPlayer b) {
-      final int byScore = b.score.compareTo(a.score);
-      if (byScore != 0) {
-        return byScore;
-      }
-      final int byGems = b.gemsCollected.compareTo(a.gemsCollected);
-      if (byGems != 0) {
-        return byGems;
-      }
-      final int byJoinOrder = a.joinOrder.compareTo(b.joinOrder);
-      if (byJoinOrder != 0) {
-        return byJoinOrder;
-      }
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      // More stocks = better rank
+      final int byStocks = b.stocks.compareTo(a.stocks);
+      if (byStocks != 0) return byStocks;
+      // Less damage = better rank
+      final int byDamage = a.damage.compareTo(b.damage);
+      if (byDamage != 0) return byDamage;
+      return a.joinOrder.compareTo(b.joinOrder);
     });
     return sorted;
   }
@@ -241,6 +260,14 @@ class AppData extends ChangeNotifier {
     }
     _lastDirection = normalized;
     _sendMessage(<String, dynamic>{'type': 'direction', 'value': normalized});
+  }
+
+  void sendJump() {
+    _sendMessage(<String, dynamic>{'type': 'jump'});
+  }
+
+  void sendAttack(int variant) {
+    _sendMessage(<String, dynamic>{'type': 'attack', 'variant': variant});
   }
 
   void requestMatchRestart() {
@@ -525,11 +552,16 @@ class AppData extends ChangeNotifier {
       id: (json['id'] as String? ?? '').trim(),
       x: (json['x'] as num? ?? 0).toDouble(),
       y: (json['y'] as num? ?? 0).toDouble(),
-      score: (json['score'] as num? ?? 0).toInt(),
-      gemsCollected: (json['gemsCollected'] as num? ?? 0).toInt(),
+      damage: (json['damage'] as num? ?? 0).toInt(),
+      stocks: (json['stocks'] as num? ?? 3).toInt(),
       direction: (json['direction'] as String? ?? 'none').trim(),
-      facing: (json['facing'] as String? ?? 'down').trim(),
+      facing: (json['facing'] as String? ?? 'right').trim(),
       moving: json['moving'] as bool? ?? false,
+      grounded: json['grounded'] as bool? ?? false,
+      attacking: json['attacking'] as bool? ?? false,
+      attackVariant: (json['attackVariant'] as num? ?? 1).toInt(),
+      hurtTimer: (json['hurtTimer'] as num? ?? 0).toDouble(),
+      flipX: json['flipX'] as bool? ?? false,
     );
   }
 
@@ -547,11 +579,16 @@ class AppData extends ChangeNotifier {
         y: dynamicData?.y ?? 0,
         width: staticData?.width ?? 20,
         height: staticData?.height ?? 20,
-        score: dynamicData?.score ?? 0,
-        gemsCollected: dynamicData?.gemsCollected ?? 0,
+        damage: dynamicData?.damage ?? 0,
+        stocks: dynamicData?.stocks ?? 3,
         direction: dynamicData?.direction ?? 'none',
-        facing: dynamicData?.facing ?? 'down',
+        facing: dynamicData?.facing ?? 'right',
         moving: dynamicData?.moving ?? false,
+        grounded: dynamicData?.grounded ?? false,
+        attacking: dynamicData?.attacking ?? false,
+        attackVariant: dynamicData?.attackVariant ?? 1,
+        hurtTimer: dynamicData?.hurtTimer ?? 0,
+        flipX: dynamicData?.flipX ?? false,
         joinOrder: staticData?.joinOrder ?? 0,
       );
     }).toList(growable: false);

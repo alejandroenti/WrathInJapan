@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const LEVEL_ROOT = path.resolve(__dirname, 'assets');
+const LEVEL_ROOT = path.resolve(__dirname, 'assets', 'levels');
 
 function loadMultiplayerLevel() {
     const root = loadJson(path.join(LEVEL_ROOT, 'game_data.json'));
@@ -89,6 +89,15 @@ function loadMultiplayerLevel() {
         worldHeight = Math.max(worldHeight, zone.y + zone.height);
     }
 
+    const spawnPoints = (level.sprites || [])
+        .filter((sprite) => normalize(String(sprite.type || '')) === 'spawn')
+        .sort((a, b) => {
+            const na = normalize(String(a.name || ''));
+            const nb = normalize(String(b.name || ''));
+            return na < nb ? -1 : na > nb ? 1 : 0;
+        })
+        .map((sprite) => ({ x: Number(sprite.x || 0), y: Number(sprite.y || 0) }));
+
     return {
         levelName: String(level.name || 'All together now'),
         worldWidth,
@@ -96,6 +105,7 @@ function loadMultiplayerLevel() {
         layers,
         zones,
         sprites,
+        spawnPoints,
         paths,
         pathBindings,
         gemCells,
