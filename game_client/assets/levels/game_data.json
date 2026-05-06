@@ -23,9 +23,9 @@
         {
           "name": "background",
           "gameplayData": "",
-          "x": 0,
-          "y": 0,
-          "depth": 0.0,
+          "x": 13,
+          "y": 230,
+          "depth": -1.0,
           "tilesSheetFile": "media/Gemini_Generated_Image_e3klude3klude3kl.png",
           "tilesWidth": 2886,
           "tilesHeight": 1440,
