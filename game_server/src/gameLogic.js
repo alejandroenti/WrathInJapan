@@ -2,8 +2,12 @@
 
 const { loadMultiplayerLevel } = require('./multiplayerLevelData.js');
 
-// Lobby countdown length before the server switches the match from waiting to playing.
-const WAITING_DURATION_MS = 60 * 1000;
+// Max players allowed in a single match.
+const MAX_PLAYERS = 6;
+// Countdown (seconds) shown once 2+ players are in the waiting room.
+const COUNTDOWN_DURATION_MS = 10 * 1000;
+// How long the results screen is shown before returning to REST.
+const RESULTS_DURATION_MS = 10 * 1000;
 // Safety fallback for dt calculation if the measured loop FPS is temporarily unavailable or zero.
 const TARGET_FPS_FALLBACK = 60;
 const PLAYER_WIDTH = 20;
@@ -119,6 +123,9 @@ class GameLogic {
     }
 
     addClient(id) {
+        if (this.players.size >= MAX_PLAYERS) {
+            return null;
+        }
         const spawn = this.getSpawnPosition(this.players.size);
         const player = {
             id,
@@ -143,8 +150,12 @@ class GameLogic {
         this.players.set(id, player);
         this.initialStateDirty = true;
 
-        if (this.players.size === 1) {
+        if (this.phase === 'rest') {
             this.startWaitingRoom();
+        } else if (this.phase === 'waiting') {
+            if (this.players.size >= 2 && this.lobbyEndsAt == null) {
+                this.startCountdown();
+            }
         } else if (this.phase === 'playing') {
             this.resetPlayerForMatch(player, this.players.size - 1);
         }
@@ -158,6 +169,11 @@ class GameLogic {
         if (this.players.size <= 0) {
             this.resetMatch();
             this.nextJoinOrder = 0;
+            return;
+        }
+        if (this.phase === 'waiting' && this.players.size < 2) {
+            // Cancel countdown until a second player joins again
+            this.lobbyEndsAt = null;
         }
     }
 
@@ -191,7 +207,7 @@ class GameLogic {
                 }
                 break;
             case 'restartMatch':
-                if (this.phase === 'finished') {
+                if (this.phase === 'results') {
                     this.restartToWaitingRoom();
                     return true;
                 }
@@ -205,6 +221,13 @@ class GameLogic {
     }
 
     updateGame(fps) {
+        if (this.phase === 'results') {
+            if (this.resultsEndsAt != null && Date.now() >= this.resultsEndsAt) {
+                this.resetMatch();
+            }
+            return;
+        }
+
         if (this.players.size <= 0) {
             return;
         }
@@ -216,10 +239,7 @@ class GameLogic {
         this.advanceEnvironment(dtSeconds);
 
         if (this.phase === 'waiting') {
-            if (this.lobbyEndsAt == null) {
-                this.startWaitingRoom();
-            }
-            if (this.lobbyEndsAt != null && Date.now() >= this.lobbyEndsAt) {
+            if (this.players.size >= 2 && this.lobbyEndsAt != null && Date.now() >= this.lobbyEndsAt) {
                 this.startMatch();
             }
             return;
@@ -359,12 +379,16 @@ class GameLogic {
         const countdownSeconds = this.phase === 'waiting' && this.lobbyEndsAt != null
             ? Math.max(0, Math.ceil((this.lobbyEndsAt - Date.now()) / 1000))
             : 0;
+        const resultsSeconds = this.phase === 'results' && this.resultsEndsAt != null
+            ? Math.max(0, Math.ceil((this.resultsEndsAt - Date.now()) / 1000))
+            : 0;
         const winner = this.winnerId ? this.players.get(this.winnerId) : players[0];
 
         return {
             tickCounter: this.tickCounter,
             phase: this.phase,
             countdownSeconds,
+            resultsSeconds,
             remainingGems: this.gems.reduce((count, gem) => count + (gem.visible ? 1 : 0), 0),
             winnerId: winner ? winner.id : '',
             winnerName: winner ? winner.name : '',
@@ -411,11 +435,18 @@ class GameLogic {
     startWaitingRoom() {
         this.phase = 'waiting';
         this.winnerId = '';
-        this.lobbyEndsAt = Date.now() + WAITING_DURATION_MS;
+        this.lobbyEndsAt = null; // Countdown starts only when >=2 players are present
+        this.resultsEndsAt = null;
         this.initialStateDirty = true;
         this.resetEnvironmentRuntime();
         this.spawnGems();
         this.positionPlayersForStart();
+    }
+
+    startCountdown() {
+        this.lobbyEndsAt = Date.now() + COUNTDOWN_DURATION_MS;
+        this.initialStateDirty = true;
+        console.log(`Countdown started: match begins in ${COUNTDOWN_DURATION_MS / 1000}s`);
     }
 
     startMatch() {
@@ -427,9 +458,11 @@ class GameLogic {
     }
 
     finishMatch() {
-        this.phase = 'finished';
+        this.phase = 'results';
+        this.resultsEndsAt = Date.now() + RESULTS_DURATION_MS;
         const players = Array.from(this.players.values()).sort(comparePlayers);
         this.winnerId = players.length > 0 ? players[0].id : '';
+        console.log(`Match finished. Results shown for ${RESULTS_DURATION_MS / 1000}s.`);
     }
 
     restartToWaitingRoom() {
@@ -441,13 +474,15 @@ class GameLogic {
     }
 
     resetMatch() {
-        this.phase = 'waiting';
+        this.phase = 'rest';
         this.lobbyEndsAt = null;
+        this.resultsEndsAt = null;
         this.winnerId = '';
         this.gems = [];
         this.nextGemId = 0;
         this.initialStateDirty = true;
         this.resetEnvironmentRuntime();
+        console.log('Server back to REST — waiting for players.');
     }
 
     resetEnvironmentRuntime() {

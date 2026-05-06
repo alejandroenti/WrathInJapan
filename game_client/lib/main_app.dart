@@ -421,7 +421,8 @@ class _GameViewState extends State<_GameView>
 
     final AppData appData = _game.getAppData();
     final bool showRestartOverlay =
-        _game.getScreen() is PlayScreen && appData.phase == MatchPhase.finished;
+        _game.getScreen() is PlayScreen &&
+        (appData.phase == MatchPhase.finished || appData.phase == MatchPhase.results);
 
     return Focus(
       focusNode: _focusNode,

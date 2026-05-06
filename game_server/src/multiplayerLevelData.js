@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const LEVEL_ROOT = path.resolve(__dirname, 'assets/levels');
+const LEVEL_ROOT = path.resolve(__dirname, 'assets');
 
 function loadMultiplayerLevel() {
     const root = loadJson(path.join(LEVEL_ROOT, 'game_data.json'));

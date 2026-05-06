@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'network_config.dart';
 import 'utils_websockets.dart';
 
-enum MatchPhase { connecting, waiting, playing, finished }
+enum MatchPhase { connecting, rest, waiting, playing, results, finished }
 
 class MultiplayerPlayer {
   final String id;
@@ -220,7 +220,7 @@ class AppData extends ChangeNotifier {
   bool get canMove => isConnected && phase == MatchPhase.playing;
 
   bool get canRequestMatchRestart =>
-      isConnected && phase == MatchPhase.finished;
+      isConnected && (phase == MatchPhase.finished || phase == MatchPhase.results);
 
   void updateNetworkConfig(NetworkConfig nextConfig) {
     networkConfig = nextConfig;
@@ -580,10 +580,14 @@ class AppData extends ChangeNotifier {
 
   MatchPhase _parsePhase(String? rawPhase) {
     switch ((rawPhase ?? '').trim().toLowerCase()) {
+      case 'rest':
+        return MatchPhase.rest;
       case 'waiting':
         return MatchPhase.waiting;
       case 'playing':
         return MatchPhase.playing;
+      case 'results':
+        return MatchPhase.results;
       case 'finished':
         return MatchPhase.finished;
       case 'connecting':

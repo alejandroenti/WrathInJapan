@@ -77,7 +77,14 @@ ws.init(httpServer, port);
 
 ws.onConnection = (socket, id) => {
     if (debug) console.log("WebSocket client connected: " + id);
-    game.addClient(id);
+    const player = game.addClient(id);
+    if (!player) {
+        // Server is full: notify the client and close the connection
+        ws.send(socket, JSON.stringify({ type: 'rejected', reason: 'server_full' }));
+        socket.close();
+        console.log(`Connection rejected (server full): ${id}`);
+        return;
+    }
     gameMessages.addClient(id);
     queueSnapshotToClient(socket, id, game.getSnapshotState());
     queueGameplayStateToClient(socket, id, {

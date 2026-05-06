@@ -125,7 +125,8 @@ class PlayScreen extends ScreenAdapter {
     _renderLocalPlayerHighlight();
 
     _renderLeaderboard(appData);
-    if (appData.phase == MatchPhase.finished) {
+    if (appData.phase == MatchPhase.finished ||
+        appData.phase == MatchPhase.results) {
       _renderWinnerOverlay(appData);
     }
   }

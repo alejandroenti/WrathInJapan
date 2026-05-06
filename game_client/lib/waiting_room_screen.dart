@@ -50,7 +50,8 @@ class WaitingRoomScreen extends ScreenAdapter {
   void render(double delta) {
     final AppData appData = game.getAppData();
     if (appData.phase == MatchPhase.playing ||
-        appData.phase == MatchPhase.finished) {
+        appData.phase == MatchPhase.finished ||
+        appData.phase == MatchPhase.results) {
       game.setScreen(PlayScreen(game, levelIndex));
       return;
     }
