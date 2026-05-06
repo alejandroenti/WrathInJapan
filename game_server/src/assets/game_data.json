@@ -1,7 +1,84 @@
 {
   "name": "Wrath In Japan",
   "description": "",
-  "levels": [],
+  "levels": [
+    {
+      "name": "Japan",
+      "description": "",
+      "gameplayData": "",
+      "layers": [
+        {
+          "name": "platforms",
+          "gameplayData": "",
+          "x": -70,
+          "y": -407,
+          "depth": 0.0,
+          "tilesSheetFile": "media/Japanese_Wall_Set.png",
+          "tilesWidth": 32,
+          "tilesHeight": 32,
+          "visible": true,
+          "groupId": "__main__",
+          "tileMapFile": "tilemaps/level_000_layer_000.json"
+        },
+        {
+          "name": "background",
+          "gameplayData": "",
+          "x": 0,
+          "y": 0,
+          "depth": 0.0,
+          "tilesSheetFile": "media/Gemini_Generated_Image_e3klude3klude3kl.png",
+          "tilesWidth": 2886,
+          "tilesHeight": 1440,
+          "visible": true,
+          "groupId": "__main__",
+          "tileMapFile": "tilemaps/level_000_layer_001.json"
+        }
+      ],
+      "layerGroups": [
+        {
+          "id": "__main__",
+          "name": "Main",
+          "collapsed": false
+        }
+      ],
+      "sprites": [
+        {
+          "name": "character",
+          "gameplayData": "",
+          "type": "character",
+          "animationId": "anim_1775909187553629",
+          "x": 1534,
+          "y": 941,
+          "width": 64,
+          "height": 64,
+          "imageFile": "media/idle_2.png",
+          "flipX": false,
+          "flipY": false,
+          "depth": 0.0,
+          "groupId": "__main__"
+        }
+      ],
+      "spriteGroups": [
+        {
+          "id": "__main__",
+          "name": "Main",
+          "collapsed": false
+        }
+      ],
+      "groupId": "__main__",
+      "viewportWidth": 320,
+      "viewportHeight": 180,
+      "viewportX": 1382,
+      "viewportY": 811,
+      "viewportAdaptation": "expand",
+      "viewportInitialColor": "green",
+      "viewportPreviewColor": "amber",
+      "backgroundColorHex": "#DCDCE1",
+      "depthSensitivity": 0.08,
+      "zonesFile": "zones/level_000_zones.json",
+      "pathsFile": "paths/level_000_paths.json"
+    }
+  ],
   "levelGroups": [
     {
       "id": "__main__",
@@ -9,7 +86,89 @@
       "collapsed": false
     }
   ],
-  "mediaAssets": [],
+  "mediaAssets": [
+    {
+      "name": "background_japan",
+      "fileName": "media/Gemini_Generated_Image_e3klude3klude3kl.png",
+      "mediaType": "tileset",
+      "tileWidth": 2756,
+      "tileHeight": 1440,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "platforms",
+      "fileName": "media/Japanese_Wall_Set.png",
+      "mediaType": "tileset",
+      "tileWidth": 32,
+      "tileHeight": 32,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "idle",
+      "fileName": "media/idle_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 64,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "jump",
+      "fileName": "media/jump.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 66,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "hurt",
+      "fileName": "media/hurt.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 64,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "attack1",
+      "fileName": "media/attack1_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 96,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "attack2",
+      "fileName": "media/attack2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 94,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "attack3",
+      "fileName": "media/attack3.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 94,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "move",
+      "fileName": "media/move_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 65,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    }
+  ],
   "mediaGroups": [
     {
       "id": "__main__",
@@ -17,6 +176,19 @@
       "collapsed": false
     }
   ],
-  "zoneTypes": [],
+  "zoneTypes": [
+    {
+      "name": "Default",
+      "color": "blue"
+    },
+    {
+      "name": "death",
+      "color": "red"
+    },
+    {
+      "name": "platform",
+      "color": "orange"
+    }
+  ],
   "animationsFile": "animations/animations.json"
 }
