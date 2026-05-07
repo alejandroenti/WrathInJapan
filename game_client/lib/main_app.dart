@@ -484,6 +484,11 @@ class _GameViewState extends State<_GameView>
     final AppData appData = _game.getAppData();
     if (appData.phase == MatchPhase.playing) {
       BgMusic.instance.stop();
+      BgMusic.instance.playGameplay();
+    } else if (appData.phase == MatchPhase.results ||
+        appData.phase == MatchPhase.finished) {
+      BgMusic.instance.stopGameplay();
+      BgMusic.instance.play();
     }
   }
 
