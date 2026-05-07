@@ -79,10 +79,10 @@ ws.onConnection = (socket, id) => {
   if (debug) console.log("WebSocket client connected: " + id);
   const player = game.addClient(id);
   if (!player) {
-    // Server is full: notify the client and close the connection
-    ws.send(socket, JSON.stringify({ type: 'rejected', reason: 'server_full' }));
+    const reason = game.phase === 'playing' ? 'game_started' : 'server_full';
+    ws.send(socket, JSON.stringify({ type: 'rejected', reason }));
     socket.close();
-    console.log(`Connection rejected (server full): ${id}`);
+    console.log(`Connection rejected (${reason}): ${id}`);
     return;
   }
   gameMessages.addClient(id);
@@ -119,6 +119,16 @@ ws.onClose = (socket, id) => {
 // **Game Loop**
 gameLoop.run = (fps) => {
   game.updateGame(fps);
+  const toKick = game.consumeKickQueue();
+  for (const id of toKick) {
+    ws.forEachClient((socket, clientId) => {
+      if (clientId === id) {
+        ws.send(socket, JSON.stringify({ type: 'rejected', reason: 'game_started' }));
+        socket.close();
+      }
+    });
+    gameMessages.removeClient(id);
+  }
   broadcastGameState();
   gameMessages.flushAll();
 };

@@ -182,6 +182,7 @@ class AppData extends ChangeNotifier {
   bool isConnected = false;
   bool isConnecting = false;
   bool isRegistered = false;
+  bool kickedFromGame = false;
   String? playerId;
   String? rejectedName;
   MatchPhase phase = MatchPhase.connecting;
@@ -410,7 +411,13 @@ class AppData extends ChangeNotifier {
 
       if (type == 'rejected') {
         final String reason = (data['reason'] as String? ?? '').trim();
-        if (reason == 'name_taken' || reason == 'server_full') {
+        if (reason == 'game_started') {
+          // Server kicked us (game started without us, or rematch declined).
+          // Stop reconnecting and signal the UI to go back to the main screen.
+          _intentionalDisconnect = true;
+          kickedFromGame = true;
+          notifyListeners();
+        } else if (reason == 'name_taken' || reason == 'server_full') {
           // Prevent the reconnect logic from firing when the server closes the socket.
           _intentionalDisconnect = true;
           rejectedName = (data['name'] as String? ?? networkConfig.playerName).trim();

@@ -65,6 +65,9 @@ class GameLogic {
         this.winnerId = '';
         this.gems = [];
         this.initialStateDirty = true;
+        this.rematchPool = new Set();
+        this.rematchLobbyEndsAt = null;
+        this.kickQueue = [];
 
         this.layerRuntimeStates = LEVEL.layers.map((layer) => ({
             x: layer.x,
@@ -114,6 +117,9 @@ class GameLogic {
     }
 
     addClient(id) {
+        if (this.phase === 'playing') {
+            return null;
+        }
         if (this.players.size >= MAX_PLAYERS) {
             return null;
         }
@@ -153,20 +159,27 @@ class GameLogic {
         this.players.set(id, player);
         this.initialStateDirty = true;
 
+        if (this.phase === 'results') {
+            this.startWaitingRoom();
+            if (this.players.size >= 2 && this.lobbyEndsAt == null) {
+                this.startCountdown();
+            }
+            return player;
+        }
+
         if (this.phase === 'rest') {
             this.startWaitingRoom();
         } else if (this.phase === 'waiting') {
             if (this.players.size >= 2 && this.lobbyEndsAt == null) {
                 this.startCountdown();
             }
-        } else if (this.phase === 'playing') {
-            this.resetPlayerForMatch(player, this.players.size - 1);
         }
 
         return player;
     }
 
     removeClient(id) {
+        this.rematchPool.delete(id);
         this.players.delete(id);
         this.initialStateDirty = true;
         if (this.players.size <= 0) {
@@ -178,6 +191,7 @@ class GameLogic {
             // Cancel countdown until a second player joins again
             this.lobbyEndsAt = null;
         }
+
     }
 
     handleMessage(id, msg) {
@@ -230,7 +244,10 @@ class GameLogic {
                     break;
                 case 'restartMatch':
                     if (this.phase === 'results') {
-                        this.restartToWaitingRoom();
+                        this.startWaitingRoom();
+                        if (this.players.size >= 2 && this.lobbyEndsAt == null) {
+                            this.startCountdown();
+                        }
                         return { stateChanged: true };
                     }
                     break;
@@ -245,7 +262,10 @@ class GameLogic {
     updateGame(fps) {
         if (this.phase === 'results') {
             if (this.resultsEndsAt != null && Date.now() >= this.resultsEndsAt) {
-                this.resetMatch();
+                this.startWaitingRoom();
+                if (this.players.size >= 2) {
+                    this.startCountdown();
+                }
             }
             return;
         }
@@ -470,6 +490,51 @@ class GameLogic {
         return resolveAnimationIdByName('idle') || (PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '');
     }
 
+    _checkRematchCountdown() {
+        if (this.rematchPool.size >= 2 && this.rematchLobbyEndsAt == null) {
+            this.rematchLobbyEndsAt = Date.now() + COUNTDOWN_DURATION_MS;
+            this.resultsEndsAt = null; // cancel auto-reset once rematch is confirmed
+            console.log(`Rematch countdown started: match begins in ${COUNTDOWN_DURATION_MS / 1000}s`);
+        }
+    }
+
+    _startRematchMatch() {
+        // Kick players who did not press rematch
+        for (const id of this.players.keys()) {
+            if (!this.rematchPool.has(id)) {
+                this.kickQueue.push(id);
+            }
+        }
+        for (const id of this.kickQueue) {
+            this.players.delete(id);
+        }
+        this.rematchPool.clear();
+        this.rematchLobbyEndsAt = null;
+
+        if (this.players.size === 0) {
+            this.resetMatch();
+            return;
+        }
+
+        // Reassign join orders sequentially to avoid gaps
+        let order = 0;
+        for (const player of this.players.values()) {
+            player.joinOrder = order++;
+        }
+        this.nextJoinOrder = order;
+
+        this.startWaitingRoom();
+        if (this.players.size >= 2) {
+            this.startCountdown();
+        }
+    }
+
+    consumeKickQueue() {
+        const queue = this.kickQueue;
+        this.kickQueue = [];
+        return queue;
+    }
+
     respawnPlayer(player) {
         const spawn = this.getSpawnPosition(player.joinOrder % MAX_PLAYERS);
         player.x = spawn.x;
@@ -560,7 +625,7 @@ class GameLogic {
     }
 
     getGameplayStateBase(players) {
-        const countdownSeconds = this.phase === 'waiting' && this.lobbyEndsAt != null
+        const countdownSeconds = (this.phase === 'waiting' && this.lobbyEndsAt != null)
             ? Math.max(0, Math.ceil((this.lobbyEndsAt - Date.now()) / 1000))
             : 0;
         const resultsSeconds = this.phase === 'results' && this.resultsEndsAt != null
@@ -612,6 +677,8 @@ class GameLogic {
         this.winnerId = '';
         this.lobbyEndsAt = null;
         this.resultsEndsAt = null;
+        this.rematchPool.clear();
+        this.rematchLobbyEndsAt = null;
         this.initialStateDirty = true;
         this.resetEnvironmentRuntime();
         this.positionPlayersForStart();
@@ -657,6 +724,8 @@ class GameLogic {
         this.phase = 'rest';
         this.lobbyEndsAt = null;
         this.resultsEndsAt = null;
+        this.rematchPool.clear();
+        this.rematchLobbyEndsAt = null;
         this.winnerId = '';
         this.gems = [];
         this.initialStateDirty = true;

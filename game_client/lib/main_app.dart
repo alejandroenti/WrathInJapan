@@ -482,11 +482,19 @@ class _GameViewState extends State<_GameView>
   void _onAppDataChanged() {
     _waitingRoomEntry?.markNeedsBuild();
     final AppData appData = _game.getAppData();
+    if (appData.kickedFromGame) {
+      appData.kickedFromGame = false;
+      widget.onBack();
+      return;
+    }
     if (appData.phase == MatchPhase.playing) {
       BgMusic.instance.stop();
       BgMusic.instance.playGameplay();
     } else if (appData.phase == MatchPhase.results ||
         appData.phase == MatchPhase.finished) {
+      BgMusic.instance.stopGameplay();
+      BgMusic.instance.play();
+    } else if (appData.phase == MatchPhase.waiting) {
       BgMusic.instance.stopGameplay();
       BgMusic.instance.play();
     }
