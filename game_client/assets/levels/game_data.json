@@ -73,7 +73,7 @@
       "viewportAdaptation": "expand",
       "viewportInitialColor": "green",
       "viewportPreviewColor": "amber",
-      "backgroundColorHex": "#DCDCE1",
+      "backgroundColorHex": "#39395F",
       "depthSensitivity": 0.08,
       "zonesFile": "zones/level_000_zones.json",
       "pathsFile": "paths/level_000_paths.json"

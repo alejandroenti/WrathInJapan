@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import 'network_config.dart';
+import 'sound_effects.dart';
 import 'utils_websockets.dart';
 
 enum MatchPhase { connecting, rest, waiting, playing, results, finished }
@@ -173,6 +174,7 @@ class AppData extends ChangeNotifier {
   final WebSocketsHandler _wsHandler = WebSocketsHandler();
   final int _maxReconnectAttempts = 5;
   final Duration _reconnectDelay = const Duration(seconds: 3);
+  int _lastLocalStocks = 3;
 
   NetworkConfig networkConfig;
   String playerName;
@@ -267,6 +269,7 @@ class AppData extends ChangeNotifier {
   }
 
   void sendAttack(int variant) {
+    SoundEffects.instance.playSwordSlice();
     _sendMessage(<String, dynamic>{'type': 'attack', 'variant': variant});
   }
 
@@ -527,6 +530,15 @@ class AppData extends ChangeNotifier {
     }
 
     _rebuildPlayers();
+
+    // Detect local player stock loss and play death sound.
+    final MultiplayerPlayer? local = localPlayer;
+    if (local != null) {
+      if (local.stocks < _lastLocalStocks) {
+        SoundEffects.instance.playMusicBoxNegative();
+      }
+      _lastLocalStocks = local.stocks;
+    }
 
     // Only report a change if something the UI actually displays has changed.
     final bool playerListChanged =
