@@ -57,6 +57,7 @@ class PlayScreen extends ScreenAdapter {
   late final Map<String, LevelSprite> gemTemplateByType;
 
   double elapsedSeconds = 0;
+  final Map<String, _PlayerAnimState> _playerAnimStates = {};
   String _lastSubmittedDirection = 'none';
   bool _showDebugOverlay = false;
   ui.Offset? _localPlayerHighlightCenter;
@@ -119,6 +120,7 @@ class PlayScreen extends ScreenAdapter {
     _renderGems(batch, appData.gems);
     _renderPlayers(batch, appData.sortedPlayers, appData.playerId);
     batch.end();
+    _renderPlayerOverlays(appData.sortedPlayers, appData.playerId);
     if (_showDebugOverlay) {
       debugOverlay.render(
         levelData,
@@ -206,94 +208,10 @@ class PlayScreen extends ScreenAdapter {
         );
         _localPlayerHighlightRadius =
             math.max(dst.width, dst.height) * 0.5 + localPlayerRingPadding;
-      } else {
-        // Draw opponent name and health bar above
-        _drawPlayerLabel(batch, player, frame);
       }
     }
     if (usingRemotePlayerOpacity) {
       batch.setColor(previousBatchColor);
-    }
-  }
-
-  void _drawPlayerLabel(
-    SpriteBatch batch,
-    MultiplayerPlayer player,
-    _AnimatedSpriteFrame frame,
-  ) {
-    // Convert world position to screen and draw name + health bar above
-    final double left = player.x - player.width * frame.anchorX;
-    final double top = player.y - player.height * frame.anchorY;
-    final ui.Rect worldRect = viewport.worldToScreenRect(
-      left,
-      top,
-      player.width,
-      player.height,
-    );
-
-    // Position name and bar above the character
-    final double nameScreenY = worldRect.top - 18;
-    final double barScreenY = nameScreenY - 8;
-    final double barCenterX = worldRect.left + worldRect.width * 0.5;
-
-    // Draw name
-    final BitmapFont font = game.getFont();
-    font.getData().setScale(playerNameTextScale);
-    font.setColor(textColor);
-    layout.setText(font, player.name);
-    final double nameX = barCenterX - layout.width * 0.5;
-    font.draw(batch, layout, nameX, nameScreenY);
-    font.getData().setScale(1);
-
-    // Draw health bar using heal_bar sprite
-    final LevelSprite? healBarTemplate = gemTemplateByType['heal_bar'];
-    if (healBarTemplate != null) {
-      final AssetManager assets = game.getAssetManager();
-      if (assets.isLoaded(healBarTemplate.texturePath, Texture)) {
-        final double healthPercent = math.max(0, (100 - player.damage) / 100);
-        final double barWidth = 40.0;
-        final double barLeft = barCenterX - barWidth * 0.5;
-
-        // Draw health bar tiles (2 tiles max for full health)
-        final int tilesVisible = math.max(1, (healthPercent * 2).round());
-        final double tileScreenWidth = barWidth / 2.0; // ~20px per tile
-
-        final Texture texture = assets.get(
-          healBarTemplate.texturePath,
-          Texture,
-        );
-
-        for (int i = 0; i < 2; i++) {
-          // Set color based on whether this tile should show health or damage
-          if (i < tilesVisible) {
-            // Health bar - full color
-            batch.setColor(0.2, 1.0, 0.2, 1.0); // Green tint for health
-          } else {
-            // Damage bar - faded
-            batch.setColor(1.0, 0.2, 0.2, 0.4); // Red tint for damage, faded
-          }
-
-          final ui.Rect dst = ui.Rect.fromLTWH(
-            barLeft + i * tileScreenWidth,
-            barScreenY,
-            tileScreenWidth,
-            healthBarHeight,
-          );
-
-          // Draw the full texture tile
-          final ui.Rect src = ui.Rect.fromLTWH(
-            0,
-            0,
-            healBarTemplate.width,
-            healBarTemplate.height,
-          );
-
-          batch.drawRegion(texture, src, dst);
-        }
-
-        // Reset color
-        batch.setColor(1.0, 1.0, 1.0, 1.0);
-      }
     }
   }
 
@@ -709,10 +627,21 @@ class PlayScreen extends ScreenAdapter {
       animationName = 'idle';
     }
 
+    final _PlayerAnimState animState =
+        _playerAnimStates[player.id] ??
+        _PlayerAnimState(animationName, elapsedSeconds);
+    if (animState.animationName != animationName) {
+      animState.animationName = animationName;
+      animState.startTime = elapsedSeconds;
+    }
+    _playerAnimStates[player.id] = animState;
+    final double animElapsed = elapsedSeconds - animState.startTime;
+
     return _frameFromTemplate(
       playerTemplate,
       animationName: animationName,
       flipX: flipX,
+      animElapsed: animElapsed,
     );
   }
 
@@ -720,6 +649,7 @@ class PlayScreen extends ScreenAdapter {
     LevelSprite template, {
     String? animationName,
     bool flipX = false,
+    double? animElapsed,
   }) {
     final String? animationId = animationName == null
         ? template.animationId
@@ -753,7 +683,7 @@ class PlayScreen extends ScreenAdapter {
     final int end = math.max(start, clip.endFrame);
     final int span = math.max(1, end - start + 1);
     final double fps = clip.fps.isFinite && clip.fps > 0 ? clip.fps : 8;
-    final int offset = ((elapsedSeconds * fps).floor()) % span;
+    final int offset = (((animElapsed ?? elapsedSeconds) * fps).floor()) % span;
     final int frameIndex = start + offset;
     final FrameRig? frameRig = clip.frameRigs.get(frameIndex);
     return _AnimatedSpriteFrame(
@@ -853,6 +783,75 @@ class PlayScreen extends ScreenAdapter {
     font.draw(batch, layout, right - layout.width, y);
     font.getData().setScale(1);
   }
+
+  void _renderPlayerOverlays(
+    List<MultiplayerPlayer> players,
+    String? localPlayerId,
+  ) {
+    const double barH = 4.0;
+    const double barPad = 6.0;
+    const double nameGap = 14.0;
+
+    // --- Phase 1: health bars via ShapeRenderer ---
+    final ShapeRenderer shapes = game.getShapeRenderer();
+    shapes.begin(ShapeType.filled);
+    for (final MultiplayerPlayer player in players) {
+      if (player.stocks <= 0) continue;
+      final _AnimatedSpriteFrame frame = _playerFrameFor(player);
+      final double left = player.x - player.width * frame.anchorX;
+      final double top = player.y - player.height * frame.anchorY;
+      final ui.Rect sr = viewport.worldToScreenRect(
+        left, top, player.width, player.height,
+      );
+      final double barW = sr.width * 1.1;
+      final double barX = sr.center.dx - barW / 2;
+      final double barY = sr.top - barPad - barH;
+      final double hp = math.max(0.0, (100 - player.damage) / 100.0);
+
+      // Shadow / background
+      shapes.setColor(colorValueOf('00000099'));
+      shapes.rect(barX - 1, barY - 1, barW + 2, barH + 2);
+
+      // Health fill (green → yellow → red)
+      final ui.Color fill = hp > 0.5
+          ? colorValueOf('55FF55FF')
+          : hp > 0.25
+              ? colorValueOf('FFCC44FF')
+              : colorValueOf('FF4444FF');
+      shapes.setColor(fill);
+      shapes.rect(barX, barY, barW * hp, barH);
+    }
+    shapes.end();
+
+    // --- Phase 2: rival names via batch ---
+    final SpriteBatch batch = game.getBatch();
+    batch.begin();
+    final BitmapFont font = game.getFont();
+    for (final MultiplayerPlayer player in players) {
+      if (player.id == localPlayerId) continue;
+      if (player.stocks <= 0) continue;
+      final _AnimatedSpriteFrame frame = _playerFrameFor(player);
+      final double left = player.x - player.width * frame.anchorX;
+      final double top = player.y - player.height * frame.anchorY;
+      final ui.Rect sr = viewport.worldToScreenRect(
+        left, top, player.width, player.height,
+      );
+      final double barY = sr.top - barPad - barH;
+      final double nameY = barY - nameGap;
+      font.getData().setScale(playerNameTextScale);
+      font.setColor(textColor);
+      layout.setText(font, player.name);
+      font.draw(batch, layout, sr.center.dx - layout.width / 2, nameY);
+      font.getData().setScale(1);
+    }
+    batch.end();
+  }
+}
+
+class _PlayerAnimState {
+  String animationName;
+  double startTime;
+  _PlayerAnimState(this.animationName, this.startTime);
 }
 
 class _AnimatedSpriteFrame {

@@ -10,8 +10,8 @@
         {
           "name": "platforms",
           "gameplayData": "",
-          "x": 13,
-          "y": 6,
+          "x": -5,
+          "y": -206,
           "depth": 0.0,
           "tilesSheetFile": "media/Japanese_Wall_Set.png",
           "tilesWidth": 32,
@@ -23,8 +23,8 @@
         {
           "name": "background",
           "gameplayData": "",
-          "x": 13,
-          "y": 230,
+          "x": 1,
+          "y": 1,
           "depth": -1.0,
           "tilesSheetFile": "media/d613e1f6-45e7-4f10-bbed-3d9fb3622c5c.jpeg",
           "tilesWidth": 1024,
