@@ -83301,7 +83301,7 @@ A.acI.prototype={
 H(){return"ServerOption."+this.b}}
 A.rL.prototype={
 gYI(){switch(this.a.a){case 0:return"127.0.0.1"
-case 1:return"apalaci8.ieti.site"}},
+case 1:return"alopezhuesca.ieti.site"}},
 gYJ(){switch(this.a.a){case 0:return 3000
 case 1:return 443}},
 gar6(){switch(this.a.a){case 0:return!1
@@ -89838,7 +89838,7 @@ B.du=new A.Ks(0,"traditional")
 B.hm=new A.Ks(1,"directional")
 B.Jw=new A.lU(!0)
 B.Jx=new A.yM(null,null,null,null,null,null,null,null,null,null,null,null,null)
-B.y4=new A.acI(0,"local")
+B.y4=new A.acI(1,"remote")
 B.Ww=new A.rL(B.y4,"Player")
 B.tV=new A.dN(B.i,B.i)
 B.hn=new A.f(0,1)
