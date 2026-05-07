@@ -12,9 +12,9 @@ const RESULTS_DURATION_MS = 10 * 1000;
 const TARGET_FPS_FALLBACK = 60;
 const PLAYER_WIDTH = 20;
 const PLAYER_HEIGHT = 20;
-const PLAYER_START_X = 32;
-const PLAYER_START_Y = 32;
-const PLAYER_START_STEP_X = 100;
+const PLAYER_START_X = 460;
+const PLAYER_START_Y = 615;
+const PLAYER_START_STEP_X = 50;
 const PLAYER_START_STEP_Y = 0;
 
 // Horizontal movement

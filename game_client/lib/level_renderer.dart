@@ -26,7 +26,7 @@ class LevelRenderer {
     Viewport viewport,
   ) {
     final List<double> depths = _collectDepths(level);
-    depths.sort((double a, double b) => b.compareTo(a));
+    depths.sort((double a, double b) => a.compareTo(b));
 
     final double baseZoom = camera.zoom;
     for (final double depth in depths) {
