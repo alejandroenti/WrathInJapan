@@ -1,89 +1,37 @@
 {
-  "name": "Multiplayer game",
-  "description": "Tileset: https://merchant-shade.itch.io/16x16-puny-world\nCharacter: https://erisesra.itch.io/character-templates-pack\nLevel 1: https://ansimuz.itch.io/sunny-land-pixel-game-art",
+  "name": "Wrath In Japan",
+  "description": "",
   "levels": [
     {
-      "name": "All together now",
+      "name": "Japan",
       "description": "",
       "gameplayData": "",
       "layers": [
         {
-          "name": "Stones 0",
+          "name": "platforms",
           "gameplayData": "",
-          "x": 320,
-          "y": 80,
+          "x": 13,
+          "y": -25,
           "depth": 0.0,
-          "tilesSheetFile": "media/punyworld-overworld-tileset.png",
-          "tilesWidth": 16,
-          "tilesHeight": 16,
+          "tilesSheetFile": "media/Japanese_Wall_Set.png",
+          "tilesWidth": 32,
+          "tilesHeight": 32,
           "visible": true,
           "groupId": "__main__",
           "tileMapFile": "tilemaps/level_000_layer_000.json"
         },
         {
-          "name": "Stones 1",
+          "name": "background",
           "gameplayData": "",
-          "x": 528,
-          "y": 400,
-          "depth": 0.0,
-          "tilesSheetFile": "media/punyworld-overworld-tileset.png",
-          "tilesWidth": 16,
-          "tilesHeight": 16,
+          "x": 1,
+          "y": 190,
+          "depth": -1.0,
+          "tilesSheetFile": "media/d613e1f6-45e7-4f10-bbed-3d9fb3622c5c.jpeg",
+          "tilesWidth": 1024,
+          "tilesHeight": 617,
           "visible": true,
           "groupId": "__main__",
           "tileMapFile": "tilemaps/level_000_layer_001.json"
-        },
-        {
-          "name": "Stones 2",
-          "gameplayData": "",
-          "x": 656,
-          "y": 80,
-          "depth": 0.0,
-          "tilesSheetFile": "media/punyworld-overworld-tileset.png",
-          "tilesWidth": 16,
-          "tilesHeight": 16,
-          "visible": true,
-          "groupId": "__main__",
-          "tileMapFile": "tilemaps/level_000_layer_002.json"
-        },
-        {
-          "name": "Stones 3",
-          "gameplayData": "",
-          "x": 48,
-          "y": 400,
-          "depth": 0.0,
-          "tilesSheetFile": "media/punyworld-overworld-tileset.png",
-          "tilesWidth": 16,
-          "tilesHeight": 16,
-          "visible": true,
-          "groupId": "__main__",
-          "tileMapFile": "tilemaps/level_000_layer_003.json"
-        },
-        {
-          "name": "Gems Zone",
-          "gameplayData": "",
-          "x": 64,
-          "y": 16,
-          "depth": 0.0,
-          "tilesSheetFile": "media/punyworld-overworld-tileset.png",
-          "tilesWidth": 16,
-          "tilesHeight": 16,
-          "visible": true,
-          "groupId": "__main__",
-          "tileMapFile": "tilemaps/level_000_layer_004.json"
-        },
-        {
-          "name": "Terrain",
-          "gameplayData": "",
-          "x": 0,
-          "y": 0,
-          "depth": 0.0,
-          "tilesSheetFile": "media/punyworld-overworld-tileset.png",
-          "tilesWidth": 16,
-          "tilesHeight": 16,
-          "visible": true,
-          "groupId": "__main__",
-          "tileMapFile": "tilemaps/level_000_layer_005.json"
         }
       ],
       "layerGroups": [
@@ -95,75 +43,15 @@
       ],
       "sprites": [
         {
-          "name": "Hero 0",
+          "name": "character",
           "gameplayData": "",
-          "type": "Hero 0",
-          "animationId": "anim_1772099194341380",
-          "x": 32,
-          "y": 32,
-          "width": 20,
-          "height": 20,
-          "imageFile": "media/16x16 Idle-Sheet.png",
-          "flipX": false,
-          "flipY": false,
-          "depth": 0.0,
-          "groupId": "__main__"
-        },
-        {
-          "name": "Gem Purple",
-          "gameplayData": "",
-          "type": "Gem Purple",
-          "animationId": "anim_1772440074459800",
-          "x": 50,
-          "y": 475,
-          "width": 15,
-          "height": 15,
-          "imageFile": "media/gem.png",
-          "flipX": false,
-          "flipY": false,
-          "depth": 0.0,
-          "groupId": "__main__"
-        },
-        {
-          "name": "Gem Yellow",
-          "gameplayData": "",
-          "type": "Gem Yellow",
-          "animationId": "anim_2",
-          "x": 75,
-          "y": 475,
-          "width": 15,
-          "height": 15,
-          "imageFile": "media/gem.png",
-          "flipX": false,
-          "flipY": false,
-          "depth": 0.0,
-          "groupId": "__main__"
-        },
-        {
-          "name": "Gem Green",
-          "gameplayData": "",
-          "type": "Gem Green",
-          "animationId": "anim_1",
-          "x": 100,
-          "y": 475,
-          "width": 15,
-          "height": 15,
-          "imageFile": "media/gem.png",
-          "flipX": false,
-          "flipY": false,
-          "depth": 0.0,
-          "groupId": "__main__"
-        },
-        {
-          "name": "Gem Blue",
-          "gameplayData": "",
-          "type": "Gem Blue",
-          "animationId": "anim_3",
-          "x": 125,
-          "y": 475,
-          "width": 15,
-          "height": 15,
-          "imageFile": "media/gem.png",
+          "type": "character",
+          "animationId": "anim_1775909187553629",
+          "x": 554,
+          "y": 620,
+          "width": 64,
+          "height": 64,
+          "imageFile": "media/idle_2.png",
           "flipX": false,
           "flipY": false,
           "depth": 0.0,
@@ -178,14 +66,14 @@
         }
       ],
       "groupId": "__main__",
-      "viewportWidth": 320,
-      "viewportHeight": 180,
-      "viewportX": 280,
-      "viewportY": 175,
+      "viewportWidth": 1024,
+      "viewportHeight": 700,
+      "viewportX": 1382,
+      "viewportY": 811,
       "viewportAdaptation": "expand",
-      "viewportInitialColor": "yellow",
-      "viewportPreviewColor": "pink",
-      "backgroundColorHex": "#000000",
+      "viewportInitialColor": "green",
+      "viewportPreviewColor": "amber",
+      "backgroundColorHex": "#39395F",
       "depthSensitivity": 0.08,
       "zonesFile": "zones/level_000_zones.json",
       "pathsFile": "paths/level_000_paths.json"
@@ -200,17 +88,89 @@
   ],
   "mediaAssets": [
     {
-      "name": "Tileset",
-      "fileName": "media/punyworld-overworld-tileset.png",
+      "name": "background_japan",
+      "fileName": "media/Gemini_Generated_Image_e3klude3klude3kl.png",
       "mediaType": "tileset",
-      "tileWidth": 16,
-      "tileHeight": 16,
-      "selectionColorHex": "#FF2D55",
+      "tileWidth": 2756,
+      "tileHeight": 1440,
+      "selectionColorHex": "#FFCC00",
       "groupId": "__main__"
     },
     {
-      "name": "Character Idle",
-      "fileName": "media/16x16 Idle-Sheet.png",
+      "name": "platforms",
+      "fileName": "media/Japanese_Wall_Set.png",
+      "mediaType": "tileset",
+      "tileWidth": 32,
+      "tileHeight": 32,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "idle",
+      "fileName": "media/idle_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 64,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "jump",
+      "fileName": "media/jump.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 66,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "hurt",
+      "fileName": "media/hurt.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 64,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "attack1",
+      "fileName": "media/attack1_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 96,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "attack2",
+      "fileName": "media/attack2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 94,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "attack3",
+      "fileName": "media/attack3.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 94,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "move",
+      "fileName": "media/move_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 65,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "heal_bar",
+      "fileName": "media/heal_bar_2.png",
       "mediaType": "spritesheet",
       "tileWidth": 20,
       "tileHeight": 20,
@@ -218,8 +178,8 @@
       "groupId": "__main__"
     },
     {
-      "name": "Character Walk",
-      "fileName": "media/16x16 Walk-Sheet.png",
+      "name": "anim_healbar",
+      "fileName": "media/anim_healbar_2.png",
       "mediaType": "spritesheet",
       "tileWidth": 20,
       "tileHeight": 20,
@@ -227,20 +187,20 @@
       "groupId": "__main__"
     },
     {
-      "name": "Smoke",
-      "fileName": "media/DragonDeath.png",
+      "name": "heal_powerup",
+      "fileName": "media/heal_2.png",
       "mediaType": "spritesheet",
-      "tileWidth": 28,
-      "tileHeight": 26,
+      "tileWidth": 20,
+      "tileHeight": 20,
       "selectionColorHex": "#FFCC00",
       "groupId": "__main__"
     },
     {
-      "name": "Gem",
-      "fileName": "media/gem.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 15,
-      "tileHeight": 15,
+      "name": "game_background",
+      "fileName": "media/d613e1f6-45e7-4f10-bbed-3d9fb3622c5c.jpeg",
+      "mediaType": "tileset",
+      "tileWidth": 1024,
+      "tileHeight": 617,
       "selectionColorHex": "#FFCC00",
       "groupId": "__main__"
     }
@@ -254,15 +214,15 @@
   ],
   "zoneTypes": [
     {
-      "name": "Wall",
+      "name": "Default",
+      "color": "blue"
+    },
+    {
+      "name": "death",
       "color": "red"
     },
     {
-      "name": "Ice",
-      "color": "cyan"
-    },
-    {
-      "name": "Sand",
+      "name": "platform",
       "color": "orange"
     }
   ],
