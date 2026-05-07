@@ -431,14 +431,26 @@ class GameLogic {
             if (!hit) {
                 continue;
             }
-            other.damage = Math.min(999, other.damage + ATTACK_DAMAGE);
-            const knockSpeed = KNOCK_BASE_SPEED + other.damage * KNOCK_DAMAGE_SCALE;
-            const dirX = attacker.flipX ? -1 : 1;
-            other.velocityX = dirX * knockSpeed;
-            other.velocityY = -knockSpeed * KNOCK_UP_RATIO;
-            other.hurtTimer = HURT_DURATION_S;
-            other.invincibleTimer = INVINCIBLE_DURATION_S;
-            other.grounded = false;
+            const newDamage = other.damage + ATTACK_DAMAGE;
+            if (newDamage > 100) {
+                // This hit pushes damage over 100%: kill the player
+                other.stocks = Math.max(0, other.stocks - 1);
+                if (other.stocks > 0) {
+                    this.respawnPlayer(other);
+                } else {
+                    other.hurtTimer = HURT_DURATION_S;
+                    other.invincibleTimer = INVINCIBLE_DURATION_S;
+                }
+            } else {
+                other.damage = newDamage;
+                const knockSpeed = KNOCK_BASE_SPEED + other.damage * KNOCK_DAMAGE_SCALE;
+                const dirX = attacker.flipX ? -1 : 1;
+                other.velocityX = dirX * knockSpeed;
+                other.velocityY = -knockSpeed * KNOCK_UP_RATIO;
+                other.hurtTimer = HURT_DURATION_S;
+                other.invincibleTimer = INVINCIBLE_DURATION_S;
+                other.grounded = false;
+            }
         }
     }
 
